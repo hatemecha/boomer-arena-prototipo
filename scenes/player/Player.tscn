@@ -91,6 +91,7 @@ surface_material_override/0 = SubResource("StandardMaterial3D_shotgun")
 
 [node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/Shotgun" unique_id=1483196134 instance=ExtResource("5_muzzle_vfx")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.55)
+flash_color = Color(1.2438526, 0.61902076, 1.827833e-06, 1)
 spark_count = 20
 
 [node name="PlayerHealth" type="Node" parent="." unique_id=756525158]
