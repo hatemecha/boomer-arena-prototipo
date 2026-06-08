@@ -1,0 +1,768 @@
+[gd_scene load_steps=54 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/test_arena.gd" id="1_arena"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_concrete_floor.tres" id="2_floor_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_concrete_wall.tres" id="3_wall_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_metal_trim.tres" id="4_trim_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_metal_grate.tres" id="5_grate_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_rust_red_panel.tres" id="6_rust_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_warning_stripes.tres" id="7_warning_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_dark_panel.tres" id="8_dark_panel_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_metal_plate.tres" id="9_plate_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_ceiling_panel.tres" id="10_ceiling_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_light_panel_emissive.tres" id="11_light_panel_mat"]
+[ext_resource type="Material" path="res://assets/materials/foxtex_skylight_glass.tres" id="12_skylight_mat"]
+[ext_resource type="Material" path="res://assets/materials/psx_dynamic_sky.tres" id="13_sky_mat"]
+
+[sub_resource type="BoxMesh" id="Mesh_floor"]
+size = Vector3(34, 0.5, 34)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(34, 0.5, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_wall_ns"]
+size = Vector3(34, 5, 0.8)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_ns"]
+size = Vector3(34, 5, 0.8)
+
+[sub_resource type="BoxMesh" id="Mesh_wall_we"]
+size = Vector3(0.8, 5, 34)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_we"]
+size = Vector3(0.8, 5, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_pillar"]
+size = Vector3(2, 3, 2)
+
+[sub_resource type="BoxShape3D" id="Shape_pillar"]
+size = Vector3(2, 3, 2)
+
+[sub_resource type="BoxMesh" id="Mesh_cover_a"]
+size = Vector3(7, 1, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_cover_a"]
+size = Vector3(7, 1, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_cover_b"]
+size = Vector3(1, 1, 7)
+
+[sub_resource type="BoxShape3D" id="Shape_cover_b"]
+size = Vector3(1, 1, 7)
+
+[sub_resource type="BoxMesh" id="Mesh_platform"]
+size = Vector3(8, 1, 6)
+
+[sub_resource type="BoxShape3D" id="Shape_platform"]
+size = Vector3(8, 1, 6)
+
+[sub_resource type="BoxMesh" id="Mesh_ramp"]
+size = Vector3(4, 0.3, 5)
+
+[sub_resource type="BoxShape3D" id="Shape_ramp"]
+size = Vector3(4, 0.3, 5)
+
+[sub_resource type="QuadMesh" id="Mesh_warning_sign"]
+size = Vector2(4, 1.4)
+
+[sub_resource type="QuadMesh" id="Mesh_wall_panel"]
+size = Vector2(3, 2)
+
+[sub_resource type="BoxMesh" id="Mesh_small_crate"]
+size = Vector3(1.2, 1, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_small_crate"]
+size = Vector3(1.2, 1, 1.2)
+
+[sub_resource type="CylinderMesh" id="Mesh_barrel"]
+top_radius = 0.38
+bottom_radius = 0.38
+height = 1.2
+radial_segments = 8
+rings = 1
+
+[sub_resource type="CylinderShape3D" id="Shape_barrel"]
+radius = 0.38
+height = 1.2
+
+[sub_resource type="CylinderMesh" id="Mesh_wall_pipe"]
+top_radius = 0.12
+bottom_radius = 0.12
+height = 10.0
+radial_segments = 8
+rings = 1
+
+[sub_resource type="BoxMesh" id="Mesh_upper_wall_ns"]
+size = Vector3(34, 4, 0.8)
+
+[sub_resource type="BoxShape3D" id="Shape_upper_wall_ns"]
+size = Vector3(34, 4, 0.8)
+
+[sub_resource type="BoxMesh" id="Mesh_upper_wall_we"]
+size = Vector3(0.8, 4, 34)
+
+[sub_resource type="BoxShape3D" id="Shape_upper_wall_we"]
+size = Vector3(0.8, 4, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_ceiling"]
+size = Vector3(34, 0.5, 34)
+
+[sub_resource type="BoxShape3D" id="Shape_ceiling"]
+size = Vector3(34, 0.5, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_ceiling_beam_x"]
+size = Vector3(34, 0.45, 0.75)
+
+[sub_resource type="BoxMesh" id="Mesh_ceiling_beam_z"]
+size = Vector3(0.75, 0.45, 34)
+
+[sub_resource type="BoxMesh" id="Mesh_light_panel"]
+size = Vector3(5.0, 0.08, 1.0)
+
+[sub_resource type="BoxMesh" id="Mesh_roof_skylight"]
+size = Vector3(7.0, 0.07, 2.1)
+
+[sub_resource type="BoxMesh" id="Mesh_wall_window"]
+size = Vector3(4.4, 1.55, 0.07)
+
+[sub_resource type="BoxMesh" id="Mesh_window_frame_horizontal"]
+size = Vector3(5.0, 0.22, 0.16)
+
+[sub_resource type="BoxMesh" id="Mesh_window_frame_vertical"]
+size = Vector3(0.22, 1.95, 0.16)
+
+[sub_resource type="BoxMesh" id="Mesh_skylight_frame"]
+size = Vector3(7.8, 0.16, 0.2)
+
+[sub_resource type="QuadMesh" id="Mesh_sky_portal_wall"]
+size = Vector2(4.15, 1.35)
+
+[sub_resource type="QuadMesh" id="Mesh_sky_portal_roof"]
+size = Vector2(6.65, 1.75)
+
+[sub_resource type="Environment" id="Environment_arena"]
+background_mode = 1
+background_color = Color(0.06, 0.06, 0.07, 1)
+fog_enabled = true
+fog_light_color = Color(0.32, 0.32, 0.36, 1)
+fog_density = 0.035
+
+[node name="TestArena" type="Node3D"]
+script = ExtResource("1_arena")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.25, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("Mesh_floor")
+surface_material_override/0 = ExtResource("2_floor_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("Shape_floor")
+
+[node name="NorthWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 2.5, -17)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="NorthWall"]
+mesh = SubResource("Mesh_wall_ns")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NorthWall"]
+shape = SubResource("Shape_wall_ns")
+
+[node name="SouthWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 2.5, 17)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="SouthWall"]
+mesh = SubResource("Mesh_wall_ns")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SouthWall"]
+shape = SubResource("Shape_wall_ns")
+
+[node name="WestWall" type="StaticBody3D" parent="."]
+position = Vector3(-17, 2.5, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="WestWall"]
+mesh = SubResource("Mesh_wall_we")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WestWall"]
+shape = SubResource("Shape_wall_we")
+
+[node name="EastWall" type="StaticBody3D" parent="."]
+position = Vector3(17, 2.5, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EastWall"]
+mesh = SubResource("Mesh_wall_we")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EastWall"]
+shape = SubResource("Shape_wall_we")
+
+[node name="UpperNorthWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 7, -17)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="UpperNorthWall"]
+mesh = SubResource("Mesh_upper_wall_ns")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="UpperNorthWall"]
+shape = SubResource("Shape_upper_wall_ns")
+
+[node name="UpperSouthWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 7, 17)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="UpperSouthWall"]
+mesh = SubResource("Mesh_upper_wall_ns")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="UpperSouthWall"]
+shape = SubResource("Shape_upper_wall_ns")
+
+[node name="UpperWestWall" type="StaticBody3D" parent="."]
+position = Vector3(-17, 7, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="UpperWestWall"]
+mesh = SubResource("Mesh_upper_wall_we")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="UpperWestWall"]
+shape = SubResource("Shape_upper_wall_we")
+
+[node name="UpperEastWall" type="StaticBody3D" parent="."]
+position = Vector3(17, 7, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="UpperEastWall"]
+mesh = SubResource("Mesh_upper_wall_we")
+surface_material_override/0 = ExtResource("3_wall_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="UpperEastWall"]
+shape = SubResource("Shape_upper_wall_we")
+
+[node name="Ceiling" type="StaticBody3D" parent="."]
+position = Vector3(0, 9.25, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ceiling"]
+mesh = SubResource("Mesh_ceiling")
+surface_material_override/0 = ExtResource("10_ceiling_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ceiling"]
+shape = SubResource("Shape_ceiling")
+
+[node name="CeilingBeamNorth" type="MeshInstance3D" parent="."]
+position = Vector3(0, 8.72, -8)
+mesh = SubResource("Mesh_ceiling_beam_x")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CeilingBeamCenterX" type="MeshInstance3D" parent="."]
+position = Vector3(0, 8.72, 0)
+mesh = SubResource("Mesh_ceiling_beam_x")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CeilingBeamSouth" type="MeshInstance3D" parent="."]
+position = Vector3(0, 8.72, 8)
+mesh = SubResource("Mesh_ceiling_beam_x")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CeilingBeamWest" type="MeshInstance3D" parent="."]
+position = Vector3(-8, 8.74, 0)
+mesh = SubResource("Mesh_ceiling_beam_z")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CeilingBeamEast" type="MeshInstance3D" parent="."]
+position = Vector3(8, 8.74, 0)
+mesh = SubResource("Mesh_ceiling_beam_z")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="LightPanelNW" type="MeshInstance3D" parent="."]
+position = Vector3(-7, 8.48, -7)
+mesh = SubResource("Mesh_light_panel")
+surface_material_override/0 = ExtResource("11_light_panel_mat")
+
+[node name="LightPanelNE" type="MeshInstance3D" parent="."]
+position = Vector3(7, 8.48, -7)
+mesh = SubResource("Mesh_light_panel")
+surface_material_override/0 = ExtResource("11_light_panel_mat")
+
+[node name="LightPanelSW" type="MeshInstance3D" parent="."]
+position = Vector3(-7, 8.48, 7)
+mesh = SubResource("Mesh_light_panel")
+surface_material_override/0 = ExtResource("11_light_panel_mat")
+
+[node name="LightPanelSE" type="MeshInstance3D" parent="."]
+position = Vector3(7, 8.48, 7)
+mesh = SubResource("Mesh_light_panel")
+surface_material_override/0 = ExtResource("11_light_panel_mat")
+
+[node name="RoofSkylightWest" type="MeshInstance3D" parent="."]
+position = Vector3(-7.2, 8.93, 0)
+mesh = SubResource("Mesh_roof_skylight")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="RoofSkylightEast" type="MeshInstance3D" parent="."]
+position = Vector3(7.2, 8.93, 0)
+mesh = SubResource("Mesh_roof_skylight")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="SkyPortalRoofWest" type="MeshInstance3D" parent="."]
+position = Vector3(-7.2, 8.84, 0)
+rotation = Vector3(-1.5708, 0, 0)
+mesh = SubResource("Mesh_sky_portal_roof")
+material_override = ExtResource("13_sky_mat")
+
+[node name="SkyPortalRoofEast" type="MeshInstance3D" parent="."]
+position = Vector3(7.2, 8.84, 0)
+rotation = Vector3(-1.5708, 0, 0)
+mesh = SubResource("Mesh_sky_portal_roof")
+material_override = ExtResource("13_sky_mat")
+
+[node name="RoofSkylightWestFrameNorth" type="MeshInstance3D" parent="."]
+position = Vector3(-7.2, 8.86, -1.22)
+mesh = SubResource("Mesh_skylight_frame")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="RoofSkylightWestFrameSouth" type="MeshInstance3D" parent="."]
+position = Vector3(-7.2, 8.86, 1.22)
+mesh = SubResource("Mesh_skylight_frame")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="RoofSkylightEastFrameNorth" type="MeshInstance3D" parent="."]
+position = Vector3(7.2, 8.86, -1.22)
+mesh = SubResource("Mesh_skylight_frame")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="RoofSkylightEastFrameSouth" type="MeshInstance3D" parent="."]
+position = Vector3(7.2, 8.86, 1.22)
+mesh = SubResource("Mesh_skylight_frame")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="NorthHighWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0, 6.65, -16.54)
+mesh = SubResource("Mesh_wall_window")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="SouthHighWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0, 6.65, 16.54)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_wall_window")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="WestHighWindow" type="MeshInstance3D" parent="."]
+position = Vector3(-16.54, 6.65, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_wall_window")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="EastHighWindow" type="MeshInstance3D" parent="."]
+position = Vector3(16.54, 6.65, 0)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_wall_window")
+surface_material_override/0 = ExtResource("12_skylight_mat")
+
+[node name="SkyPortalNorthWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0, 6.65, -16.46)
+mesh = SubResource("Mesh_sky_portal_wall")
+material_override = ExtResource("13_sky_mat")
+
+[node name="SkyPortalSouthWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0, 6.65, 16.46)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_sky_portal_wall")
+material_override = ExtResource("13_sky_mat")
+
+[node name="SkyPortalWestWindow" type="MeshInstance3D" parent="."]
+position = Vector3(-16.46, 6.65, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_sky_portal_wall")
+material_override = ExtResource("13_sky_mat")
+
+[node name="SkyPortalEastWindow" type="MeshInstance3D" parent="."]
+position = Vector3(16.46, 6.65, 0)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_sky_portal_wall")
+material_override = ExtResource("13_sky_mat")
+
+[node name="NorthHighWindowTopFrame" type="MeshInstance3D" parent="."]
+position = Vector3(0, 7.53, -16.48)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="NorthHighWindowBottomFrame" type="MeshInstance3D" parent="."]
+position = Vector3(0, 5.77, -16.48)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="NorthHighWindowLeftFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-2.45, 6.65, -16.48)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="NorthHighWindowRightFrame" type="MeshInstance3D" parent="."]
+position = Vector3(2.45, 6.65, -16.48)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="SouthHighWindowTopFrame" type="MeshInstance3D" parent="."]
+position = Vector3(0, 7.53, 16.48)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="SouthHighWindowBottomFrame" type="MeshInstance3D" parent="."]
+position = Vector3(0, 5.77, 16.48)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="SouthHighWindowLeftFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-2.45, 6.65, 16.48)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="SouthHighWindowRightFrame" type="MeshInstance3D" parent="."]
+position = Vector3(2.45, 6.65, 16.48)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="WestHighWindowTopFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-16.48, 7.53, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="WestHighWindowBottomFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-16.48, 5.77, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="WestHighWindowLeftFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-16.48, 6.65, -2.45)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="WestHighWindowRightFrame" type="MeshInstance3D" parent="."]
+position = Vector3(-16.48, 6.65, 2.45)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="EastHighWindowTopFrame" type="MeshInstance3D" parent="."]
+position = Vector3(16.48, 7.53, 0)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="EastHighWindowBottomFrame" type="MeshInstance3D" parent="."]
+position = Vector3(16.48, 5.77, 0)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_window_frame_horizontal")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="EastHighWindowLeftFrame" type="MeshInstance3D" parent="."]
+position = Vector3(16.48, 6.65, -2.45)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="EastHighWindowRightFrame" type="MeshInstance3D" parent="."]
+position = Vector3(16.48, 6.65, 2.45)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_window_frame_vertical")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="ArenaLightNW" type="OmniLight3D" parent="."]
+position = Vector3(-7, 7.9, -7)
+light_color = Color(0.7, 0.82, 1, 1)
+light_energy = 1.35
+light_indirect_energy = 0.25
+omni_range = 16.0
+shadow_enabled = false
+
+[node name="ArenaLightNE" type="OmniLight3D" parent="."]
+position = Vector3(7, 7.9, -7)
+light_color = Color(0.7, 0.82, 1, 1)
+light_energy = 1.35
+light_indirect_energy = 0.25
+omni_range = 16.0
+shadow_enabled = false
+
+[node name="ArenaLightSW" type="OmniLight3D" parent="."]
+position = Vector3(-7, 7.9, 7)
+light_color = Color(0.7, 0.82, 1, 1)
+light_energy = 1.35
+light_indirect_energy = 0.25
+omni_range = 16.0
+shadow_enabled = false
+
+[node name="ArenaLightSE" type="OmniLight3D" parent="."]
+position = Vector3(7, 7.9, 7)
+light_color = Color(0.7, 0.82, 1, 1)
+light_energy = 1.35
+light_indirect_energy = 0.25
+omni_range = 16.0
+shadow_enabled = false
+
+[node name="ExteriorSunLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-1.0472, 0.523599, 0)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 0.9
+shadow_enabled = false
+
+[node name="WindowFillRoofWest" type="OmniLight3D" parent="."]
+position = Vector3(-7.2, 7.55, 0)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 1.2
+omni_range = 14.0
+shadow_enabled = false
+
+[node name="WindowFillRoofEast" type="OmniLight3D" parent="."]
+position = Vector3(7.2, 7.55, 0)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 1.2
+omni_range = 14.0
+shadow_enabled = false
+
+[node name="WindowFillNorth" type="OmniLight3D" parent="."]
+position = Vector3(0, 6.2, -12.5)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 0.8
+omni_range = 12.0
+shadow_enabled = false
+
+[node name="WindowFillSouth" type="OmniLight3D" parent="."]
+position = Vector3(0, 6.2, 12.5)
+light_color = Color(0.72, 0.82, 1, 1)
+light_energy = 0.8
+omni_range = 12.0
+shadow_enabled = false
+
+[node name="PillarNW" type="StaticBody3D" parent="."]
+position = Vector3(-8, 1.5, -4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarNW"]
+mesh = SubResource("Mesh_pillar")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarNW"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarSE" type="StaticBody3D" parent="."]
+position = Vector3(8, 1.5, 4)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarSE"]
+mesh = SubResource("Mesh_pillar")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarSE"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarSW" type="StaticBody3D" parent="."]
+position = Vector3(-4, 1.5, 8)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarSW"]
+mesh = SubResource("Mesh_pillar")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarSW"]
+shape = SubResource("Shape_pillar")
+
+[node name="PillarNE" type="StaticBody3D" parent="."]
+position = Vector3(4, 1.5, -8)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PillarNE"]
+mesh = SubResource("Mesh_pillar")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PillarNE"]
+shape = SubResource("Shape_pillar")
+
+[node name="CentralCoverA" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.5, 3)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CentralCoverA"]
+mesh = SubResource("Mesh_cover_a")
+surface_material_override/0 = ExtResource("6_rust_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CentralCoverA"]
+shape = SubResource("Shape_cover_a")
+
+[node name="CentralCoverB" type="StaticBody3D" parent="."]
+position = Vector3(3, 0.5, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CentralCoverB"]
+mesh = SubResource("Mesh_cover_b")
+surface_material_override/0 = ExtResource("6_rust_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CentralCoverB"]
+shape = SubResource("Shape_cover_b")
+
+[node name="RaisedPlatformWest" type="StaticBody3D" parent="."]
+position = Vector3(-10, 0.5, 10)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RaisedPlatformWest"]
+mesh = SubResource("Mesh_platform")
+surface_material_override/0 = ExtResource("5_grate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RaisedPlatformWest"]
+shape = SubResource("Shape_platform")
+
+[node name="RaisedPlatformEast" type="StaticBody3D" parent="."]
+position = Vector3(10, 0.5, -10)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RaisedPlatformEast"]
+mesh = SubResource("Mesh_platform")
+surface_material_override/0 = ExtResource("5_grate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RaisedPlatformEast"]
+shape = SubResource("Shape_platform")
+
+[node name="RampWest" type="StaticBody3D" parent="."]
+position = Vector3(-6, 0.15, 10)
+rotation = Vector3(0, 0, -0.314159)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RampWest"]
+mesh = SubResource("Mesh_ramp")
+surface_material_override/0 = ExtResource("5_grate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RampWest"]
+shape = SubResource("Shape_ramp")
+
+[node name="RampEast" type="StaticBody3D" parent="."]
+position = Vector3(6, 0.15, -10)
+rotation = Vector3(0, 0, 0.314159)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RampEast"]
+mesh = SubResource("Mesh_ramp")
+surface_material_override/0 = ExtResource("5_grate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RampEast"]
+shape = SubResource("Shape_ramp")
+
+[node name="NorthWarningSign" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.8, -16.58)
+mesh = SubResource("Mesh_warning_sign")
+surface_material_override/0 = ExtResource("7_warning_mat")
+
+[node name="SouthWarningSign" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.8, 16.58)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_warning_sign")
+surface_material_override/0 = ExtResource("7_warning_mat")
+
+[node name="WestWarningSign" type="MeshInstance3D" parent="."]
+position = Vector3(-16.58, 2.8, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("Mesh_warning_sign")
+surface_material_override/0 = ExtResource("7_warning_mat")
+
+[node name="EastWarningSign" type="MeshInstance3D" parent="."]
+position = Vector3(16.58, 2.8, 0)
+rotation = Vector3(0, -1.5708, 0)
+mesh = SubResource("Mesh_warning_sign")
+surface_material_override/0 = ExtResource("7_warning_mat")
+
+[node name="NorthDarkPanelLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-10, 2.5, -16.56)
+mesh = SubResource("Mesh_wall_panel")
+surface_material_override/0 = ExtResource("8_dark_panel_mat")
+
+[node name="NorthDarkPanelRight" type="MeshInstance3D" parent="."]
+position = Vector3(10, 2.5, -16.56)
+mesh = SubResource("Mesh_wall_panel")
+surface_material_override/0 = ExtResource("8_dark_panel_mat")
+
+[node name="SouthDarkPanelLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-10, 2.5, 16.56)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_wall_panel")
+surface_material_override/0 = ExtResource("8_dark_panel_mat")
+
+[node name="SouthDarkPanelRight" type="MeshInstance3D" parent="."]
+position = Vector3(10, 2.5, 16.56)
+rotation = Vector3(0, 3.14159, 0)
+mesh = SubResource("Mesh_wall_panel")
+surface_material_override/0 = ExtResource("8_dark_panel_mat")
+
+[node name="CrateWestWall" type="StaticBody3D" parent="."]
+position = Vector3(-14, 0.5, 5)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CrateWestWall"]
+mesh = SubResource("Mesh_small_crate")
+surface_material_override/0 = ExtResource("9_plate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CrateWestWall"]
+shape = SubResource("Shape_small_crate")
+
+[node name="CrateEastWall" type="StaticBody3D" parent="."]
+position = Vector3(14, 0.5, -5)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CrateEastWall"]
+mesh = SubResource("Mesh_small_crate")
+surface_material_override/0 = ExtResource("9_plate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CrateEastWall"]
+shape = SubResource("Shape_small_crate")
+
+[node name="CrateNorthWall" type="StaticBody3D" parent="."]
+position = Vector3(-5, 0.5, -14)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CrateNorthWall"]
+mesh = SubResource("Mesh_small_crate")
+surface_material_override/0 = ExtResource("9_plate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CrateNorthWall"]
+shape = SubResource("Shape_small_crate")
+
+[node name="CrateSouthWall" type="StaticBody3D" parent="."]
+position = Vector3(5, 0.5, 14)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CrateSouthWall"]
+mesh = SubResource("Mesh_small_crate")
+surface_material_override/0 = ExtResource("9_plate_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CrateSouthWall"]
+shape = SubResource("Shape_small_crate")
+
+[node name="BarrelNorthEast" type="StaticBody3D" parent="."]
+position = Vector3(8, 0.6, -14)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BarrelNorthEast"]
+mesh = SubResource("Mesh_barrel")
+surface_material_override/0 = ExtResource("6_rust_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BarrelNorthEast"]
+shape = SubResource("Shape_barrel")
+
+[node name="BarrelSouthWest" type="StaticBody3D" parent="."]
+position = Vector3(-8, 0.6, 14)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="BarrelSouthWest"]
+mesh = SubResource("Mesh_barrel")
+surface_material_override/0 = ExtResource("6_rust_mat")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="BarrelSouthWest"]
+shape = SubResource("Shape_barrel")
+
+[node name="NorthWallPipe" type="MeshInstance3D" parent="."]
+position = Vector3(0, 3.75, -16.55)
+rotation = Vector3(0, 0, 1.5708)
+mesh = SubResource("Mesh_wall_pipe")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="EastWallPipe" type="MeshInstance3D" parent="."]
+position = Vector3(16.55, 3.35, 0)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("Mesh_wall_pipe")
+surface_material_override/0 = ExtResource("4_trim_mat")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.959931, 0.610865, 0)
+light_energy = 0.9
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_arena")

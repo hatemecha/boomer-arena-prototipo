@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/psx_sky_portal.gdshader" id="1_sky_shader"]
+
+[resource]
+shader = ExtResource("1_sky_shader")
+shader_parameter/top_color = Vector3(0.32, 0.48, 0.78)
+shader_parameter/horizon_color = Vector3(0.78, 0.84, 0.9)
+shader_parameter/cloud_color = Vector3(0.88, 0.9, 0.86)
+shader_parameter/star_color = Vector3(0.68, 0.76, 1.0)
+shader_parameter/cloud_amount = 0.45
+shader_parameter/star_amount = 0.0
+shader_parameter/brightness = 1.0

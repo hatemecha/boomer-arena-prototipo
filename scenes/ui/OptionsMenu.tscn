@@ -1,0 +1,214 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/options_menu.gd" id="1_options_menu"]
+
+[node name="OptionsMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+script = ExtResource("1_options_menu")
+
+[node name="DimBackground" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0, 0, 0, 0.72)
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -170.0
+offset_right = 250.0
+offset_bottom = 170.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="Panel/Margin/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+text = "OPCIONES"
+horizontal_alignment = 1
+
+[node name="GameplayHeader" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+text = "Juego"
+
+[node name="MouseSensitivityRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="MouseSensitivityLabel" type="Label" parent="Panel/Margin/Scroll/Content/MouseSensitivityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sensibilidad"
+
+[node name="MouseSensitivitySlider" type="HSlider" parent="Panel/Margin/Scroll/Content/MouseSensitivityRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+min_value = 0.02
+max_value = 0.25
+step = 0.01
+value = 0.08
+
+[node name="MouseSensitivityValue" type="Label" parent="Panel/Margin/Scroll/Content/MouseSensitivityRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 0)
+layout_mode = 2
+text = "0.08"
+horizontal_alignment = 2
+
+[node name="FovRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="FovLabel" type="Label" parent="Panel/Margin/Scroll/Content/FovRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Campo de vision"
+
+[node name="FovSlider" type="HSlider" parent="Panel/Margin/Scroll/Content/FovRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+min_value = 75.0
+max_value = 110.0
+step = 1.0
+value = 95.0
+
+[node name="FovValue" type="Label" parent="Panel/Margin/Scroll/Content/FovRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 0)
+layout_mode = 2
+text = "95"
+horizontal_alignment = 2
+
+[node name="CrosshairCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Mostrar mira"
+
+[node name="VideoHeader" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+text = "Video"
+
+[node name="FullscreenCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Pantalla completa"
+
+[node name="VsyncCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "VSync"
+
+[node name="FrameLimitRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="FrameLimitLabel" type="Label" parent="Panel/Margin/Scroll/Content/FrameLimitRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Limite de FPS"
+
+[node name="FrameLimitOption" type="OptionButton" parent="Panel/Margin/Scroll/Content/FrameLimitRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+
+[node name="StyleHeader" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+text = "Estilo"
+
+[node name="PsxFilterCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Filtro PSX"
+
+[node name="TimePresetRow" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TimePresetLabel" type="Label" parent="Panel/Margin/Scroll/Content/TimePresetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Luz del mapa"
+
+[node name="TimePresetOption" type="OptionButton" parent="Panel/Margin/Scroll/Content/TimePresetRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+
+[node name="DevelopmentHeader" type="Label" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+text = "Desarrollo"
+
+[node name="DebugHudCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Mostrar datos de debug"
+
+[node name="DevelopmentActions" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RefillAmmoButton" type="Button" parent="Panel/Margin/Scroll/Content/DevelopmentActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Municion"
+
+[node name="HealPlayerButton" type="Button" parent="Panel/Margin/Scroll/Content/DevelopmentActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Curar"
+
+[node name="DamagePlayerButton" type="Button" parent="Panel/Margin/Scroll/Content/DevelopmentActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Dano -25"
+
+[node name="RespawnPlayerButton" type="Button" parent="Panel/Margin/Scroll/Content/DevelopmentActions"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Respawn"
+
+[node name="ResumeButton" type="Button" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+text = "Volver"

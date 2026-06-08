@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
+
+[node name="HUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_hud")
+
+[node name="Stats" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 12.0
+offset_top = 10.0
+offset_right = 260.0
+offset_bottom = 160.0
+
+[node name="HealthLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "HEALTH: 100 / 100"
+
+[node name="WeaponLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "WEAPON: SMG"
+
+[node name="AmmoLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "AMMO: 24 / 96"
+
+[node name="FpsLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "FPS: 0"
+
+[node name="PositionLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "POS: 0, 0, 0"
+
+[node name="SpeedLabel" type="Label" parent="Stats"]
+layout_mode = 2
+text = "SPEED: 0"
+
+[node name="Crosshair" type="Label" parent="."]
+mouse_filter = 2
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -5.0
+offset_top = -12.0
+offset_right = 5.0
+offset_bottom = 12.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "+"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AimDot" type="ColorRect" parent="."]
+visible = false
+mouse_filter = 2
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -1.5
+offset_top = -1.5
+offset_right = 1.5
+offset_bottom = 1.5
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(1, 0.12, 0.05, 0.9)

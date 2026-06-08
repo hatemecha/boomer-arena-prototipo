@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8muzzleflashvfx01"]
+
+[ext_resource type="Script" path="res://scripts/vfx/muzzle_flash.gd" id="1_muzzle"]
+
+[node name="VFX_MuzzleFlash" type="Node3D"]
+script = ExtResource("1_muzzle")

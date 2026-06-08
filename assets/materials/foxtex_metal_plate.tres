@@ -1,0 +1,9 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/foxtex/metal_plate_panel.png" id="1_plate"]
+
+[resource]
+albedo_texture = ExtResource("1_plate")
+texture_filter = 0
+uv1_scale = Vector3(1, 1, 1)
+roughness = 0.95

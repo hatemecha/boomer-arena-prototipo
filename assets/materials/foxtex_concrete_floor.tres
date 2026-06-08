@@ -1,0 +1,9 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/foxtex/concrete_hazard_floor.png" id="1_floor"]
+
+[resource]
+albedo_texture = ExtResource("1_floor")
+texture_filter = 0
+uv1_scale = Vector3(8, 8, 1)
+roughness = 1.0

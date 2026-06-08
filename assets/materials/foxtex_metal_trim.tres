@@ -1,0 +1,9 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/foxtex/metal_trim_wall.png" id="1_trim"]
+
+[resource]
+albedo_texture = ExtResource("1_trim")
+texture_filter = 0
+uv1_scale = Vector3(2, 3, 1)
+roughness = 0.95
