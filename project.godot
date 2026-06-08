@@ -31,6 +31,4 @@ window/vsync/vsync_mode=0
 
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"
-anti_aliasing/quality/msaa_3d=0
-anti_aliasing/quality/screen_space_aa=0
 environment/defaults/default_clear_color=Color(0.035, 0.04, 0.055, 1)
