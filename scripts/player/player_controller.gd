@@ -11,7 +11,7 @@ signal died
 @export_range(0.1, 80.0) var ground_acceleration: float = 52.0
 @export_range(0.1, 40.0) var air_acceleration: float = 16.0
 @export_range(0.1, 60.0) var friction: float = 24.0
-@export_range(0.01, 1.0) var mouse_sensitivity: float = 0.08
+@export_range(0.01, 1.0) var mouse_sensitivity: float = 0.25
 @export_range(60.0, 120.0) var fov: float = 95.0
 @export_range(45.0, 100.0) var aim_fov: float = 60.0
 @export_range(1.0, 40.0) var aim_enter_speed: float = 14.0

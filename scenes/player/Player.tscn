@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://ygqsa51dbmty" path="res://scripts/player/player_health.gd" id="2_health"]
 [ext_resource type="Script" uid="uid://c8l36kb34krw4" path="res://scripts/weapons/hitscan_weapon.gd" id="3_smg"]
 [ext_resource type="PackedScene" uid="uid://du0vjwcpdc151" path="res://assets/models/weapons/low_poly_msmc.glb" id="4_msmc"]
-[ext_resource type="PackedScene" uid="uid://c8muzzleflashvfx01" path="res://scenes/vfx/VFX_MuzzleFlash.tscn" id="5_muzzle_vfx"]
+[ext_resource type="PackedScene" uid="uid://dlajk6orniyaq" path="res://scenes/vfx/VFX_MuzzleFlash.tscn" id="5_muzzle_vfx"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.45
@@ -16,7 +16,6 @@ size = Vector3(0.7, 1.5, 0.45)
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_body"]
 albedo_color = Color(0.18, 0.18, 0.2, 1)
 texture_filter = 0
-roughness = 1.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_shotgun"]
 size = Vector3(0.26, 0.18, 0.95)
@@ -24,7 +23,6 @@ size = Vector3(0.26, 0.18, 0.95)
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_shotgun"]
 albedo_color = Color(0.13, 0.12, 0.1, 1)
 texture_filter = 0
-roughness = 1.0
 
 [node name="Player" type="CharacterBody3D" unique_id=541657603]
 script = ExtResource("1_player")
@@ -70,7 +68,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05, 0.81, 0.018)
 
 [node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/SMG" unique_id=485693042 instance=ExtResource("5_muzzle_vfx")]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.019999996, 0.03999996, -0.79250264)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00042326748, 0.101918936, -0.75758386)
 
 [node name="Shotgun" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=2005278481]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.34, -0.27, -0.78)
