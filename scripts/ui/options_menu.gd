@@ -18,6 +18,7 @@ const FRAME_LIMITS: Array[int] = [0, 30, 60, 120]
 @onready var time_preset_option: OptionButton = %TimePresetOption
 @onready var crosshair_check: CheckBox = %CrosshairCheck
 @onready var debug_hud_check: CheckBox = %DebugHudCheck
+@onready var debug_draw_check: CheckBox = %DebugDrawCheck
 @onready var resume_button: Button = %ResumeButton
 @onready var refill_ammo_button: Button = %RefillAmmoButton
 @onready var heal_player_button: Button = %HealPlayerButton
@@ -27,6 +28,7 @@ const FRAME_LIMITS: Array[int] = [0, 30, 60, 120]
 var _player: PlayerController
 var _hud: HUD
 var _visual_director: PSXVisualDirector
+var _debug_draw_manager: ArenaDebugDrawManager
 var _is_syncing_controls: bool = false
 
 
@@ -37,7 +39,12 @@ func _ready() -> void:
 	_connect_controls()
 
 
-func bind_context(player: PlayerController, hud: HUD, visual_director: PSXVisualDirector) -> void:
+func bind_context(
+	player: PlayerController,
+	hud: HUD,
+	visual_director: PSXVisualDirector,
+	debug_draw_manager: ArenaDebugDrawManager = null
+) -> void:
 	if player == null:
 		push_error("OptionsMenu cannot bind a null player.")
 		return
@@ -48,6 +55,7 @@ func bind_context(player: PlayerController, hud: HUD, visual_director: PSXVisual
 	_player = player
 	_hud = hud
 	_visual_director = visual_director
+	_debug_draw_manager = debug_draw_manager
 	_sync_controls_from_game()
 
 
@@ -98,6 +106,7 @@ func _connect_controls() -> void:
 	time_preset_option.item_selected.connect(_on_time_preset_selected)
 	crosshair_check.toggled.connect(_on_crosshair_toggled)
 	debug_hud_check.toggled.connect(_on_debug_hud_toggled)
+	debug_draw_check.toggled.connect(_on_debug_draw_toggled)
 	refill_ammo_button.pressed.connect(_on_refill_ammo_pressed)
 	heal_player_button.pressed.connect(_on_heal_player_pressed)
 	damage_player_button.pressed.connect(_on_damage_player_pressed)
@@ -124,6 +133,12 @@ func _sync_controls_from_game() -> void:
 	if _hud != null:
 		crosshair_check.button_pressed = _hud.is_crosshair_enabled()
 		debug_hud_check.button_pressed = _hud.is_debug_visible()
+
+	if _debug_draw_manager != null:
+		debug_draw_check.button_pressed = _debug_draw_manager.debug_draw_enabled
+	else:
+		debug_draw_check.button_pressed = false
+		debug_draw_check.disabled = true
 
 	_is_syncing_controls = false
 
@@ -215,6 +230,12 @@ func _on_debug_hud_toggled(enabled: bool) -> void:
 	if _is_syncing_controls or _hud == null:
 		return
 	_hud.set_debug_visible(enabled)
+
+
+func _on_debug_draw_toggled(enabled: bool) -> void:
+	if _is_syncing_controls or _debug_draw_manager == null:
+		return
+	_debug_draw_manager.set_debug_draw_enabled(enabled)
 
 
 func _on_refill_ammo_pressed() -> void:

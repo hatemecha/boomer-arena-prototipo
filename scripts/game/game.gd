@@ -9,34 +9,60 @@ extends Node3D
 @export var options_menu_scene: PackedScene = preload("res://scenes/ui/OptionsMenu.tscn")
 @export_range(0.1, 10.0) var player_respawn_delay: float = 3.0
 
+var players: Array[PlayerController] = []
+
 var _player: PlayerController
 var _hud: HUD
 var _options_layer: CanvasLayer
 var _options_menu: OptionsMenu
 var _visual_director: PSXVisualDirector
-var _spawn_points: Array[Transform3D] = [
-	Transform3D(Basis().rotated(Vector3.UP, deg_to_rad(180.0)), Vector3(0.0, 1.2, 12.0)),
-	Transform3D(Basis(), Vector3(0.0, 1.2, -12.0)),
-	Transform3D(Basis().rotated(Vector3.UP, deg_to_rad(90.0)), Vector3(-12.0, 1.2, 0.0)),
-	Transform3D(Basis().rotated(Vector3.UP, deg_to_rad(-90.0)), Vector3(12.0, 1.2, 0.0)),
-]
+var _spawn_manager: SpawnManager
+var _pickup_spawner: PickupSpawner
+var _match_manager: MatchManager
+var _debug_draw_manager: ArenaDebugDrawManager
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	DefaultInputActions.ensure_default_actions()
 	_visual_director = $PSXVisualDirector as PSXVisualDirector
+	_setup_managers()
+	_match_manager.start_match()
 	_spawn_player()
-	_spawn_pickups()
+	_pickup_spawner.spawn_pickups(self)
 	_spawn_targets()
 	_setup_hud()
 	_setup_options_menu()
+	_debug_draw_manager.bind_context(_spawn_manager, _pickup_spawner, players)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+	if event is InputEventKey and event.echo:
+		return
+	if event.is_action_pressed("pause"):
 		if _options_menu != null:
 			_options_menu.toggle()
 			get_viewport().set_input_as_handled()
+
+
+func _setup_managers() -> void:
+	_spawn_manager = SpawnManager.new()
+	_spawn_manager.name = "SpawnManager"
+	add_child(_spawn_manager)
+
+	_pickup_spawner = PickupSpawner.new()
+	_pickup_spawner.name = "PickupSpawner"
+	_pickup_spawner.ammo_pickup_scene = ammo_pickup_scene
+	_pickup_spawner.health_pickup_scene = health_pickup_scene
+	add_child(_pickup_spawner)
+
+	_match_manager = MatchManager.new()
+	_match_manager.name = "MatchManager"
+	add_child(_match_manager)
+
+	_debug_draw_manager = ArenaDebugDrawManager.new()
+	_debug_draw_manager.name = "ArenaDebugDrawManager"
+	add_child(_debug_draw_manager)
 
 
 func _spawn_player() -> void:
@@ -45,25 +71,13 @@ func _spawn_player() -> void:
 		push_error("Player scene must instantiate a PlayerController.")
 		return
 
+	_player.player_id = 1
+	_player.display_name = "Player"
 	add_child(_player)
-	_player.died.connect(_on_player_died)
-	_respawn_player()
-
-
-func _spawn_pickups() -> void:
-	_spawn_pickup(ammo_pickup_scene, Vector3(-11.0, 1.0, -11.0))
-	_spawn_pickup(ammo_pickup_scene, Vector3(11.0, 1.0, 11.0))
-	_spawn_pickup(health_pickup_scene, Vector3(-11.0, 1.0, 11.0))
-	_spawn_pickup(health_pickup_scene, Vector3(11.0, 1.0, -11.0))
-
-
-func _spawn_pickup(scene: PackedScene, spawn_position: Vector3) -> void:
-	var pickup: Node3D = scene.instantiate() as Node3D
-	if pickup == null:
-		push_error("Pickup scene must instantiate a Node3D.")
-		return
-	add_child(pickup)
-	pickup.global_position = spawn_position
+	players.append(_player)
+	_match_manager.ensure_player(_player.player_id)
+	_player.died.connect(_on_player_died.bind(_player))
+	_respawn_player(_player)
 
 
 func _spawn_targets() -> void:
@@ -105,18 +119,20 @@ func _setup_options_menu() -> void:
 	add_child(_options_layer)
 	_options_layer.add_child(options_menu)
 	_options_menu = options_menu
-	_options_menu.bind_context(_player, _hud, _visual_director)
+	_options_menu.bind_context(_player, _hud, _visual_director, _debug_draw_manager)
 	_options_menu.menu_visibility_changed.connect(_on_options_visibility_changed)
 	_options_menu.respawn_requested.connect(_on_options_respawn_requested)
 
 
-func _on_player_died() -> void:
+func _on_player_died(player: PlayerController) -> void:
+	if player != null:
+		_match_manager.register_death(player.player_id)
 	await get_tree().create_timer(player_respawn_delay).timeout
-	_respawn_player()
+	_respawn_player(player)
 
 
 func _on_options_respawn_requested() -> void:
-	_respawn_player()
+	_respawn_player(_player)
 
 
 func _on_options_visibility_changed(is_visible: bool) -> void:
@@ -125,16 +141,10 @@ func _on_options_visibility_changed(is_visible: bool) -> void:
 	_player.set_gameplay_input_enabled(not is_visible)
 
 
-func _respawn_player() -> void:
-	if _player == null:
+func _respawn_player(player: PlayerController = null) -> void:
+	var player_to_respawn: PlayerController = player if player != null else _player
+	if player_to_respawn == null:
 		push_error("Cannot respawn because no player exists.")
 		return
-	var spawn_transform: Transform3D = _choose_spawn_transform()
-	_player.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)
-
-
-func _choose_spawn_transform() -> Transform3D:
-	if _spawn_points.is_empty():
-		push_warning("No spawn points configured. Falling back to origin.")
-		return Transform3D(Basis(), Vector3(0.0, 1.2, 0.0))
-	return _spawn_points.pick_random()
+	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
+	player_to_respawn.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)

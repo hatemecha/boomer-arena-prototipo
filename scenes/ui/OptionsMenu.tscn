@@ -179,6 +179,12 @@ layout_mode = 2
 button_pressed = true
 text = "Mostrar datos de debug"
 
+[node name="DebugDrawCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+button_pressed = true
+text = "Debug Draw 3D"
+
 [node name="DevelopmentActions" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]
 layout_mode = 2
 theme_override_constants/separation = 8

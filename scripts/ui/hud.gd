@@ -32,13 +32,19 @@ func bind_player(player: PlayerController) -> void:
 		return
 
 	_player = player
+	if player.health == null:
+		push_error("HUD cannot bind because the player has no health component.")
+		return
+
 	player.health.health_changed.connect(_on_health_changed)
 	player.debug_stats_changed.connect(_on_debug_stats_changed)
 	player.active_weapon_changed.connect(_on_active_weapon_changed)
 	_on_active_weapon_changed(player.weapon)
 
 	if _active_weapon == null:
-		push_error("HUD cannot bind because the player has no active weapon.")
+		_on_ammo_changed(0, 0)
+		_on_weapon_state_changed("NoWeapon")
+		_on_health_changed(player.health.current_health, player.health.max_health)
 		return
 
 	_on_health_changed(player.health.current_health, player.health.max_health)
@@ -47,9 +53,12 @@ func bind_player(player: PlayerController) -> void:
 
 
 func _process(_delta: float) -> void:
-	fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
-	position_label.text = "POS: %.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
-	speed_label.text = "SPEED: %.1f" % _debug_speed
+	if fps_label != null:
+		fps_label.text = "DEBUG FPS: %d" % Engine.get_frames_per_second()
+	if position_label != null:
+		position_label.text = "DEBUG POS: %.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
+	if speed_label != null:
+		speed_label.text = "DEBUG SPEED: %.1f" % _debug_speed
 	var is_aiming: bool = _active_weapon != null and _active_weapon.is_aiming
 	if crosshair != null:
 		crosshair.visible = _crosshair_enabled and not is_aiming

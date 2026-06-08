@@ -20,6 +20,7 @@ const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 var _post_process_layer: CanvasLayer
 var _post_process_rect: ColorRect
 var _post_process_material: ShaderMaterial
+var _nearest_filtering_applied: bool = false
 
 
 func _ready() -> void:
@@ -45,8 +46,9 @@ func refresh_visual_style() -> void:
 	_apply_environment_preset()
 	_apply_post_process_preset()
 
-	if enforce_nearest_filtering:
+	if enforce_nearest_filtering and not _nearest_filtering_applied:
 		_apply_nearest_filtering(get_tree().current_scene)
+		_nearest_filtering_applied = true
 
 
 func _ensure_post_process() -> void:
