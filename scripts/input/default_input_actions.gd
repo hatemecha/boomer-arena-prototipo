@@ -13,6 +13,8 @@ static func ensure_default_actions() -> void:
 	_ensure_mouse_action("fire", MOUSE_BUTTON_LEFT)
 	_ensure_mouse_action("aim", MOUSE_BUTTON_RIGHT)
 	_ensure_key_action("reload", KEY_R)
+	_ensure_key_action("interact", KEY_E)
+	_ensure_key_action("music_next", KEY_F)
 	_ensure_key_action("weapon_1", KEY_1)
 	_ensure_key_action("weapon_2", KEY_2)
 	_ensure_key_action("weapon_3", KEY_3)

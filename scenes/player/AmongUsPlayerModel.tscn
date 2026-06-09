@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://b7prcdw7ebatu"]
 
-[ext_resource type="PackedScene" uid="uid://iaaa762l56q7" path="res://among_us_animado.glb" id="1_among_us"]
+[ext_resource type="PackedScene" uid="uid://iaaa762l56q7" path="res://assets/models/player/among_us_animado.glb" id="1_among_us"]
 [ext_resource type="Script" path="res://scenes/player/among_us_player_model.gd" id="1_w7d50"]
 
 [node name="AmongUsPlayerModel" type="Node3D"]

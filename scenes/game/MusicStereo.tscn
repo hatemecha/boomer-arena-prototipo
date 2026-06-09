@@ -1,0 +1,33 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/music_stereo.gd" id="1_stereo_script"]
+[ext_resource type="PackedScene" path="res://assets/models/props/music_stereo/music_player_low_poly.glb" id="2_stereo_model"]
+
+[sub_resource type="BoxShape3D" id="Shape_body"]
+size = Vector3(0.9, 0.7, 0.5)
+
+[sub_resource type="SphereShape3D" id="Shape_interaction"]
+radius = 3.2
+
+[node name="MusicStereo" type="Node3D"]
+script = ExtResource("1_stereo_script")
+
+[node name="Model" parent="." instance=ExtResource("2_stereo_model")]
+
+[node name="Body" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Body"]
+shape = SubResource("Shape_body")
+
+[node name="InteractionArea" type="Area3D" parent="."]
+collision_mask = 3
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionArea"]
+shape = SubResource("Shape_interaction")
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="."]
+attenuation_model = 0
+panning_strength = 0.45
+
+[connection signal="body_entered" from="InteractionArea" to="." method="_on_interaction_area_body_entered"]
+[connection signal="body_exited" from="InteractionArea" to="." method="_on_interaction_area_body_exited"]

@@ -8,7 +8,7 @@ extends Control
 @export_range(0.0, 12.0) var hologram_max_offset: float = 5.0
 
 @onready var stats: VBoxContainer = get_node_or_null("Stats") as VBoxContainer
-@onready var health_icon: TextureRect = get_node_or_null("Stats/HealthRow/Icon") as TextureRect
+@onready var health_tag: Label = get_node_or_null("Stats/HealthRow/Tag") as Label
 @onready var health_label: Label = get_node_or_null("Stats/HealthRow/HealthLabel") as Label
 @onready var weapon_row: HBoxContainer = get_node_or_null("Stats/WeaponRow") as HBoxContainer
 @onready var player_label: Label = get_node_or_null("Stats/PlayerRow/PlayerLabel") as Label
@@ -29,6 +29,12 @@ extends Control
 @onready var speed_label: Label = get_node_or_null("Stats/SpeedRow/SpeedLabel") as Label
 @onready var crosshair: Control = get_node_or_null("Crosshair") as Control
 @onready var aim_dot: ColorRect = get_node_or_null("AimDot") as ColorRect
+@onready var music_panel: Control = get_node_or_null("MusicPanel") as Control
+@onready var music_cover: TextureRect = get_node_or_null("MusicPanel/Cover") as TextureRect
+@onready var music_title_label: Label = get_node_or_null("MusicPanel/Metadata/TitleLabel") as Label
+@onready var music_artist_label: Label = get_node_or_null("MusicPanel/Metadata/ArtistLabel") as Label
+@onready var music_state_label: Label = get_node_or_null("MusicPanel/Metadata/StateLabel") as Label
+@onready var interaction_hint: Label = get_node_or_null("InteractionHint") as Label
 
 const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
@@ -56,12 +62,17 @@ var _stats_base_offset_top: float = STATS_DEFAULT_OFFSET.y
 var _stats_base_offset_right: float = STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x
 var _stats_base_offset_bottom: float = STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
 var _hologram_motion_sample_age: float = 999.0
+var _music_stereo: MusicStereo
 
 
 func _ready() -> void:
 	_ensure_optional_labels()
 	_capture_stats_base_offsets()
 	set_debug_visible(_debug_visible)
+	if music_panel != null:
+		music_panel.visible = false
+	if interaction_hint != null:
+		interaction_hint.visible = false
 
 
 func bind_player(player: PlayerController) -> void:
@@ -124,7 +135,31 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 		_match_manager.match_finished.connect(_on_match_finished)
 	_refresh_score_label()
 	if match_label != null:
-		match_label.text = "FIRST TO %d KILLS" % _match_manager.score_limit
+		match_label.text = "PRIMERO A %d BAJAS" % _match_manager.score_limit
+
+
+func bind_music_stereo(music_stereo: MusicStereo) -> void:
+	if music_stereo == null:
+		return
+
+	if _music_stereo != null:
+		if _music_stereo.track_changed.is_connected(_on_music_track_changed):
+			_music_stereo.track_changed.disconnect(_on_music_track_changed)
+		if _music_stereo.proximity_changed.is_connected(_on_music_proximity_changed):
+			_music_stereo.proximity_changed.disconnect(_on_music_proximity_changed)
+		if _music_stereo.interaction_hint_changed.is_connected(_on_music_interaction_hint_changed):
+			_music_stereo.interaction_hint_changed.disconnect(_on_music_interaction_hint_changed)
+
+	_music_stereo = music_stereo
+	_music_stereo.track_changed.connect(_on_music_track_changed)
+	_music_stereo.proximity_changed.connect(_on_music_proximity_changed)
+	_music_stereo.interaction_hint_changed.connect(_on_music_interaction_hint_changed)
+	_on_music_track_changed(
+		_music_stereo.get_current_title(),
+		_music_stereo.get_current_artist(),
+		_music_stereo.get_current_cover(),
+		_music_stereo.is_playing()
+	)
 
 
 func _process(delta: float) -> void:
@@ -201,7 +236,7 @@ func _on_health_changed(current_health: int, max_health: int) -> void:
 	_max_health = max_health
 	if health_label != null:
 		health_label.text = "%d / %d" % [_health, _max_health]
-	_update_health_icon_tint()
+	_update_health_tint()
 
 
 func _on_ammo_changed(ammo_in_mag: int, reserve_ammo: int) -> void:
@@ -248,7 +283,7 @@ func _on_score_changed(_player_id: int, _kills: int, _deaths: int) -> void:
 func _on_match_finished(winner_id: int) -> void:
 	if match_label == null:
 		return
-	match_label.text = "P%d WINS" % winner_id
+	match_label.text = "P%d GANA" % winner_id
 
 
 func _refresh_score_label() -> void:
@@ -260,6 +295,34 @@ func _refresh_score_label() -> void:
 
 func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
 	_apply_lens_safe_layout(preset)
+
+
+func _on_music_track_changed(title: String, artist: String, cover: Texture2D, is_playing: bool) -> void:
+	if music_panel != null:
+		music_panel.visible = is_playing
+	if music_cover != null:
+		music_cover.texture = cover
+	if music_title_label != null:
+		music_title_label.text = title.to_upper()
+	if music_artist_label != null:
+		music_artist_label.text = artist.to_upper()
+	if music_state_label != null:
+		music_state_label.text = "REPRODUCIENDO" if is_playing else "PAUSADO"
+
+
+func _on_music_proximity_changed(_is_near: bool) -> void:
+	if music_state_label == null or _music_stereo == null:
+		return
+
+	music_state_label.text = "REPRODUCIENDO" if _music_stereo.is_playing() else "PAUSADO"
+
+
+func _on_music_interaction_hint_changed(text: String, is_visible: bool) -> void:
+	if interaction_hint == null:
+		return
+
+	interaction_hint.text = text
+	interaction_hint.visible = is_visible
 
 
 func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
@@ -370,11 +433,11 @@ func _ensure_optional_labels() -> void:
 		ping_label = ping_row_data["label"] as Label
 
 
-func _update_health_icon_tint() -> void:
-	if health_icon == null or _max_health <= 0:
+func _update_health_tint() -> void:
+	if health_tag == null or _max_health <= 0:
 		return
 
 	var health_ratio: float = float(_health) / float(_max_health)
-	health_icon.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TINT
+	health_tag.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TAG_TINT
 	if health_label != null:
 		health_label.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TINT

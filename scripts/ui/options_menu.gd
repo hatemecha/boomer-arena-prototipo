@@ -42,13 +42,14 @@ func _ready() -> void:
 
 
 func _configure_dev_buttons() -> void:
-	refill_ammo_button.icon = null
-	heal_player_button.icon = HudIcons.HEALTH
-	damage_player_button.icon = HudIcons.WEAPON
-	respawn_player_button.icon = HudIcons.SCORE
-	heal_player_button.expand_icon = true
-	damage_player_button.expand_icon = true
-	respawn_player_button.expand_icon = true
+	var dev_buttons: Array[Button] = [
+		refill_ammo_button,
+		heal_player_button,
+		damage_player_button,
+		respawn_player_button,
+	]
+	for button in dev_buttons:
+		button.icon = null
 
 
 func bind_context(
@@ -96,7 +97,7 @@ func toggle() -> void:
 
 func _populate_options() -> void:
 	frame_limit_option.clear()
-	frame_limit_option.add_item("Sin limite", 0)
+	frame_limit_option.add_item("Sin límite", 0)
 	frame_limit_option.add_item("30 FPS", 30)
 	frame_limit_option.add_item("60 FPS", 60)
 	frame_limit_option.add_item("120 FPS", 120)

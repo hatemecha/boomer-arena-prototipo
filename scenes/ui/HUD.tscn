@@ -1,12 +1,7 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
 [ext_resource type="Script" path="res://scripts/ui/circular_crosshair.gd" id="2_crosshair"]
-[ext_resource type="Texture2D" path="res://tool_icons_16px/circle.png" id="3_health"]
-[ext_resource type="Texture2D" path="res://tool_icons_16px/mouse_left.png" id="4_weapon"]
-[ext_resource type="Texture2D" path="res://tool_icons_16px/stopwatch.png" id="5_fps"]
-[ext_resource type="Texture2D" path="res://tool_icons_16px/grid.png" id="6_position"]
-[ext_resource type="Texture2D" path="res://tool_icons_16px/walk.png" id="7_speed"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -23,42 +18,41 @@ layout_mode = 1
 anchors_preset = 0
 offset_left = 54.0
 offset_top = 42.0
-offset_right = 286.0
+offset_right = 330.0
 offset_bottom = 142.0
 theme_override_constants/separation = 4
-scale = Vector2(0.78, 0.78)
+scale = Vector2(0.68, 0.68)
 
 [node name="HealthRow" type="HBoxContainer" parent="Stats"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Stats/HealthRow"]
-custom_minimum_size = Vector2(16, 16)
+[node name="Tag" type="Label" parent="Stats/HealthRow"]
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
-texture = ExtResource("3_health")
-texture_filter = 0
-expand_mode = 4
-stretch_mode = 5
-modulate = Color(0.92, 0.9, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "VIDA"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="HealthLabel" type="Label" parent="Stats/HealthRow"]
 layout_mode = 2
 text = "100 / 100"
 
 [node name="WeaponRow" type="HBoxContainer" parent="Stats"]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Stats/WeaponRow"]
-custom_minimum_size = Vector2(16, 16)
+[node name="Tag" type="Label" parent="Stats/WeaponRow"]
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
-texture = ExtResource("4_weapon")
-texture_filter = 0
-expand_mode = 4
-stretch_mode = 5
-modulate = Color(0.92, 0.9, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "ARMA"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="WeaponLabel" type="Label" parent="Stats/WeaponRow"]
 layout_mode = 2
@@ -69,11 +63,11 @@ layout_mode = 2
 theme_override_constants/separation = 6
 
 [node name="Tag" type="Label" parent="Stats/AmmoRow"]
-custom_minimum_size = Vector2(42, 16)
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 14
-text = "AMMO"
+text = "MUNICIÓN"
 horizontal_alignment = 2
 modulate = Color(1, 0.12, 0.05, 1)
 
@@ -86,15 +80,14 @@ visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Stats/FpsRow"]
-custom_minimum_size = Vector2(16, 16)
+[node name="Tag" type="Label" parent="Stats/FpsRow"]
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
-texture = ExtResource("5_fps")
-texture_filter = 0
-expand_mode = 4
-stretch_mode = 5
-modulate = Color(0.92, 0.9, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "FPS"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="FpsLabel" type="Label" parent="Stats/FpsRow"]
 layout_mode = 2
@@ -105,15 +98,14 @@ visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Stats/PositionRow"]
-custom_minimum_size = Vector2(16, 16)
+[node name="Tag" type="Label" parent="Stats/PositionRow"]
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
-texture = ExtResource("6_position")
-texture_filter = 0
-expand_mode = 4
-stretch_mode = 5
-modulate = Color(0.92, 0.9, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "POS"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="PositionLabel" type="Label" parent="Stats/PositionRow"]
 layout_mode = 2
@@ -124,19 +116,89 @@ visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Stats/SpeedRow"]
-custom_minimum_size = Vector2(16, 16)
+[node name="Tag" type="Label" parent="Stats/SpeedRow"]
+custom_minimum_size = Vector2(72, 16)
 layout_mode = 2
 mouse_filter = 2
-texture = ExtResource("7_speed")
-texture_filter = 0
-expand_mode = 4
-stretch_mode = 5
-modulate = Color(0.92, 0.9, 0.86, 1)
+theme_override_font_sizes/font_size = 14
+text = "VEL"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="SpeedLabel" type="Label" parent="Stats/SpeedRow"]
 layout_mode = 2
 text = "0"
+
+[node name="MusicPanel" type="HBoxContainer" parent="."]
+visible = false
+custom_minimum_size = Vector2(226, 40)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -262.0
+offset_top = 38.0
+offset_right = -36.0
+offset_bottom = 78.0
+grow_horizontal = 0
+theme_override_constants/separation = 7
+
+[node name="Metadata" type="VBoxContainer" parent="MusicPanel"]
+custom_minimum_size = Vector2(182, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="TitleLabel" type="Label" parent="MusicPanel/Metadata"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 9
+text = "ULTERIOR MOTIVES - 1985 AOP MIX"
+horizontal_alignment = 2
+text_overrun_behavior = 3
+
+[node name="ArtistLabel" type="Label" parent="MusicPanel/Metadata"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 8
+text = "WHO'S WHO; CHRISTOPHER SAINT"
+horizontal_alignment = 2
+modulate = Color(0.86, 0.86, 0.82, 1)
+text_overrun_behavior = 3
+
+[node name="StateLabel" type="Label" parent="MusicPanel/Metadata"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 8
+text = "PAUSADO"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
+text_overrun_behavior = 3
+
+[node name="Cover" type="TextureRect" parent="MusicPanel"]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="InteractionHint" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -92.0
+offset_top = 28.0
+offset_right = 92.0
+offset_bottom = 44.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 10
+text = "E PLAY/PAUSA  F SIGUIENTE"
+horizontal_alignment = 1
+modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="Crosshair" type="Control" parent="."]
 mouse_filter = 2

@@ -2,7 +2,7 @@ class_name HudIcons
 extends RefCounted
 
 const ICON_SIZE: Vector2 = Vector2(16.0, 16.0)
-const TAG_MIN_SIZE: Vector2 = Vector2(42.0, 16.0)
+const TAG_MIN_SIZE: Vector2 = Vector2(72.0, 16.0)
 
 const HEALTH: String = "VIDA"
 const WEAPON: String = "ARMA"

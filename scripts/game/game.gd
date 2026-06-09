@@ -7,6 +7,7 @@ const NetworkManagerScript: GDScript = preload("res://scripts/game/network_manag
 @export var ammo_pickup_scene: PackedScene = preload("res://scenes/pickups/AmmoPickup.tscn")
 @export var health_pickup_scene: PackedScene = preload("res://scenes/pickups/HealthPickup.tscn")
 @export var target_scene: PackedScene = preload("res://scenes/game/DamageableTarget.tscn")
+@export var music_stereo_scene: PackedScene = preload("res://scenes/game/MusicStereo.tscn")
 @export var hud_scene: PackedScene = preload("res://scenes/ui/HUD.tscn")
 @export var options_menu_scene: PackedScene = preload("res://scenes/ui/OptionsMenu.tscn")
 @export var lan_lobby_menu_scene: PackedScene = preload("res://scenes/ui/LanLobbyMenu.tscn")
@@ -41,8 +42,10 @@ var _local_ping_ms: int = -1
 var _peer_ping_ms: Dictionary = {}
 var _network_status_text: String = "OFFLINE"
 var _hud_player: PlayerController
+var _music_stereo: MusicStereo
 var _has_spawned_pickups: bool = false
 var _has_spawned_targets: bool = false
+var _has_spawned_music_stereo: bool = false
 var _selected_time_of_day_preset: int = PSXVisualDirector.TimeOfDayPreset.NIGHT
 
 
@@ -234,6 +237,9 @@ func _spawn_world_content() -> void:
 	if not _has_spawned_targets:
 		_spawn_targets()
 		_has_spawned_targets = true
+	if not _has_spawned_music_stereo:
+		_spawn_music_stereo()
+		_has_spawned_music_stereo = true
 
 
 func _start_offline_match() -> void:
@@ -367,6 +373,7 @@ func _register_network_peer(peer_id: int) -> void:
 	_network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(peer_id)
 	_sync_pickups_to_peer(peer_id)
+	_sync_music_stereo_to_peer(peer_id)
 	_sync_score_snapshot_to_peers()
 
 
@@ -397,6 +404,23 @@ func _spawn_target(spawn_position: Vector3) -> void:
 		return
 	add_child(target)
 	target.global_position = spawn_position
+
+
+func _spawn_music_stereo() -> void:
+	var music_stereo: MusicStereo = music_stereo_scene.instantiate() as MusicStereo
+	if music_stereo == null:
+		push_error("Music stereo scene must instantiate MusicStereo.")
+		return
+
+	add_child(music_stereo)
+	music_stereo.global_position = Vector3(-9.5, 1.0, 9.5)
+	music_stereo.rotation_degrees.y = 42.0
+	music_stereo.playback_toggle_requested.connect(_on_music_stereo_playback_toggle_requested)
+	music_stereo.next_track_requested.connect(_on_music_stereo_next_track_requested)
+	_music_stereo = music_stereo
+	for hud in _huds:
+		if hud != null:
+			hud.bind_music_stereo(_music_stereo)
 
 
 func _register_pickups() -> void:
@@ -475,6 +499,8 @@ func _setup_local_hud(player: PlayerController) -> void:
 	_huds.append(hud)
 	hud.bind_player(player)
 	hud.bind_match(_match_manager, player.player_id)
+	if _music_stereo != null:
+		hud.bind_music_stereo(_music_stereo)
 	if _visual_director != null:
 		hud.bind_visual_director(_visual_director)
 	_hud_player = player
@@ -671,6 +697,18 @@ func _sync_score_snapshot_to_peers() -> void:
 	_network_sync_score_snapshot.rpc(_match_manager.get_score_snapshot(), _match_manager.match_running)
 
 
+func _sync_music_stereo_to_peer(peer_id: int) -> void:
+	if _music_stereo == null or not _is_networked() or not multiplayer.is_server() or peer_id == 1:
+		return
+
+	_network_apply_music_stereo_state.rpc_id(
+		peer_id,
+		_music_stereo.get_track_index(),
+		_music_stereo.is_playing(),
+		_music_stereo.get_playback_position()
+	)
+
+
 func _sync_player_health_to_peers(player: PlayerController) -> void:
 	if player == null or not _is_networked() or not multiplayer.is_server():
 		return
@@ -745,6 +783,47 @@ func _on_options_respawn_requested() -> void:
 func _on_options_visibility_changed(is_visible: bool) -> void:
 	if _player != null:
 		_player.set_gameplay_input_enabled(not is_visible)
+
+
+func _on_music_stereo_playback_toggle_requested() -> void:
+	if _is_networked() and not multiplayer.is_server():
+		_server_request_music_stereo_toggle.rpc_id(1)
+		return
+	_apply_music_stereo_toggle()
+
+
+func _on_music_stereo_next_track_requested() -> void:
+	if _is_networked() and not multiplayer.is_server():
+		_server_request_music_stereo_next.rpc_id(1)
+		return
+	_apply_music_stereo_next()
+
+
+func _apply_music_stereo_toggle() -> void:
+	if _music_stereo == null:
+		return
+
+	_music_stereo.toggle_playback()
+	_broadcast_music_stereo_state()
+
+
+func _apply_music_stereo_next() -> void:
+	if _music_stereo == null:
+		return
+
+	_music_stereo.next_track()
+	_broadcast_music_stereo_state()
+
+
+func _broadcast_music_stereo_state() -> void:
+	if _music_stereo == null or not _is_networked() or not multiplayer.is_server():
+		return
+
+	_network_apply_music_stereo_state.rpc(
+		_music_stereo.get_track_index(),
+		_music_stereo.is_playing(),
+		_music_stereo.get_playback_position()
+	)
 
 
 func _on_score_changed(_player_id: int, _kills: int, _deaths: int) -> void:
@@ -974,6 +1053,13 @@ func _network_apply_time_of_day_preset(time_of_day_preset: int) -> void:
 
 
 @rpc("authority", "reliable")
+func _network_apply_music_stereo_state(track_index: int, should_play: bool, playback_position: float) -> void:
+	if _music_stereo == null:
+		return
+	_music_stereo.apply_remote_state(track_index, should_play, playback_position)
+
+
+@rpc("authority", "reliable")
 func _network_set_pickup_available(pickup_id: int, is_available: bool) -> void:
 	var pickup: PickupBase = _get_pickup_by_id(pickup_id)
 	if pickup == null:
@@ -1083,6 +1169,20 @@ func _server_request_respawn() -> void:
 
 
 @rpc("any_peer", "reliable")
+func _server_request_music_stereo_toggle() -> void:
+	if not multiplayer.is_server():
+		return
+	_apply_music_stereo_toggle()
+
+
+@rpc("any_peer", "reliable")
+func _server_request_music_stereo_next() -> void:
+	if not multiplayer.is_server():
+		return
+	_apply_music_stereo_next()
+
+
+@rpc("any_peer", "reliable")
 func _request_full_sync() -> void:
 	if not multiplayer.is_server():
 		return
@@ -1091,4 +1191,5 @@ func _request_full_sync() -> void:
 	_network_apply_time_of_day_preset.rpc_id(sender_peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(sender_peer_id)
 	_sync_pickups_to_peer(sender_peer_id)
+	_sync_music_stereo_to_peer(sender_peer_id)
 	_network_sync_score_snapshot.rpc_id(sender_peer_id, _match_manager.get_score_snapshot(), _match_manager.match_running)

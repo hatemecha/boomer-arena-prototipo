@@ -257,6 +257,10 @@ func is_aiming() -> bool:
 	return _is_aiming
 
 
+func is_local_controlled() -> bool:
+	return _is_locally_controlled()
+
+
 func get_active_weapon_index() -> int:
 	return _active_weapon_index
 

@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://iaaa762l56q7"
-path="res://.godot/imported/among_us_animado.glb-5237eb7208844c1f58154be27a4082af.scn"
+path="res://.godot/imported/among_us_animado.glb-d406faa5e0135a005b12b774a48b24ee.scn"
 
 [deps]
 
-source_file="res://among_us_animado.glb"
-dest_files=["res://.godot/imported/among_us_animado.glb-5237eb7208844c1f58154be27a4082af.scn"]
+source_file="res://assets/models/player/among_us_animado.glb"
+dest_files=["res://.godot/imported/among_us_animado.glb-d406faa5e0135a005b12b774a48b24ee.scn"]
 
 [params]
 
