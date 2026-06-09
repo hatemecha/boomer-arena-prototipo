@@ -51,22 +51,38 @@ signal local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2)
 @export_range(1.0, 30.0) var crouch_transition_speed: float = 12.0
 @export_range(0.0, 1.0) var crouch_camera_drop: float = 0.45
 @export var camera_motion_enabled: bool = true
-@export_range(0.0, 3.0) var walk_bob_amount: float = 0.035
-@export_range(0.0, 3.0) var run_bob_amount: float = 0.065
-@export_range(0.0, 20.0) var bob_frequency: float = 8.0
+@export_range(0.0, 0.2) var idle_breath_amount: float = 0.018
+@export_range(0.1, 3.0) var idle_breath_frequency: float = 0.75
+@export_range(0.0, 5.0) var idle_breath_roll_amount: float = 0.65
+@export_range(0.0, 3.0) var walk_bob_amount: float = 0.066
+@export_range(0.0, 3.0) var run_bob_amount: float = 0.108
+@export_range(0.5, 4.0) var walk_stride_length: float = 2.15
+@export_range(1.0, 5.0) var run_stride_length: float = 2.9
+@export_range(0.5, 2.0) var bob_frequency_scale: float = 0.95
+@export_range(0.0, 8.0) var bob_lateral_ratio: float = 0.5
+@export_range(0.0, 8.0) var bob_forward_ratio: float = 0.2
+@export_range(0.0, 1.0) var bob_entry_floor: float = 0.72
+@export_range(1.0, 20.0) var bob_blend_speed: float = 6.5
+@export_range(0.0, 12.0) var camera_roll_amount: float = 5.2
+@export_range(0.0, 8.0) var camera_strafe_pitch_amount: float = 2.4
+@export_range(0.0, 8.0) var camera_strafe_yaw_amount: float = 1.6
+@export_range(0.0, 1.0) var camera_look_inertia: float = 0.12
+@export_range(1.0, 40.0) var camera_look_return_speed: float = 9.0
+@export_range(0.0, 1.0) var camera_aim_motion_multiplier: float = 0.42
 @export_range(0.0, 20.0) var run_fov_boost: float = 5.0
 @export_range(1.0, 30.0) var fov_transition_speed: float = 10.0
-@export_range(0.0, 0.2) var landing_camera_dip: float = 0.06
+@export_range(0.0, 0.2) var landing_camera_dip: float = 0.09
 @export var weapon_motion_enabled: bool = true
-@export_range(0.0, 1.0) var weapon_sway_amount: float = 0.06
-@export_range(0.0, 1.0) var weapon_rotation_sway_amount: float = 0.035
-@export_range(0.0, 1.0) var weapon_movement_sway_amount: float = 0.045
-@export_range(0.1, 3.0) var weapon_run_sway_multiplier: float = 1.45
+@export_range(0.0, 1.0) var weapon_sway_amount: float = 0.12
+@export_range(0.0, 1.0) var weapon_rotation_sway_amount: float = 0.085
+@export_range(0.0, 1.0) var weapon_movement_sway_amount: float = 0.098
+@export_range(0.1, 4.0) var weapon_run_sway_multiplier: float = 1.82
 @export_range(0.0, 1.0) var weapon_crouch_sway_multiplier: float = 0.45
-@export_range(0.0, 1.0) var weapon_aim_sway_multiplier: float = 0.12
-@export_range(1.0, 30.0) var weapon_sway_smoothing: float = 13.0
-@export_range(0.0, 0.2) var weapon_jump_drop: float = 0.045
-@export_range(0.0, 0.2) var weapon_landing_kick: float = 0.055
+@export_range(0.0, 1.0) var weapon_aim_sway_multiplier: float = 0.38
+@export_range(0.0, 2.0) var weapon_aim_move_sway_multiplier: float = 0.72
+@export_range(1.0, 30.0) var weapon_sway_smoothing: float = 10.0
+@export_range(0.0, 0.2) var weapon_jump_drop: float = 0.065
+@export_range(0.0, 0.2) var weapon_landing_kick: float = 0.08
 @export var hide_body_for_local_player: bool = true
 
 @onready var camera_pivot: Node3D = $CameraPivot
@@ -105,6 +121,16 @@ var _standing_camera_pivot_position: Vector3 = Vector3.ZERO
 var _standing_body_position: Vector3 = Vector3.ZERO
 var _standing_body_scale: Vector3 = Vector3.ONE
 var _bob_time: float = 0.0
+var _bob_blend: float = 0.0
+var _smoothed_bob_offset: Vector3 = Vector3.ZERO
+var _smoothed_strafe_factor: float = 0.0
+var _smoothed_motion_speed: float = 0.0
+var _breath_time: float = 0.0
+var _camera_pitch_inertia: float = 0.0
+var _camera_yaw_inertia: float = 0.0
+var _camera_roll: float = 0.0
+var _recoil_pitch_offset: float = 0.0
+var _previous_camera_yaw: float = 0.0
 var _landing_offset: float = 0.0
 var _was_on_floor: bool = false
 var _wall_jump_cooldown_timer: float = 0.0
@@ -134,6 +160,7 @@ func _ready() -> void:
 	health.died.connect(_on_health_died)
 	_previous_yaw = rotation.y
 	_previous_pitch = _pitch_degrees
+	_previous_camera_yaw = rotation.y
 
 
 func _input(event: InputEvent) -> void:
@@ -261,6 +288,16 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	_weapon_velocity_sway = Vector3.ZERO
 	_previous_yaw = rotation.y
 	_previous_pitch = _pitch_degrees
+	_previous_camera_yaw = rotation.y
+	_breath_time = 0.0
+	_bob_blend = 0.0
+	_smoothed_bob_offset = Vector3.ZERO
+	_smoothed_strafe_factor = 0.0
+	_smoothed_motion_speed = 0.0
+	_camera_pitch_inertia = 0.0
+	_camera_yaw_inertia = 0.0
+	_camera_roll = 0.0
+	_recoil_pitch_offset = 0.0
 	_last_view_delta = Vector2.ZERO
 	_apply_crouch_collision(0.0)
 	health.respawn()
@@ -595,23 +632,83 @@ func _update_camera_motion(delta: float) -> void:
 		return
 
 	var horizontal_speed: float = _get_horizontal_speed()
-	var is_moving: bool = horizontal_speed > 0.1 and is_on_floor() and _gameplay_input_enabled and not _is_dead
+	var is_on_ground: bool = is_on_floor() and _gameplay_input_enabled and not _is_dead
 	var is_running: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching and horizontal_speed > walk_speed + 0.25
 	var crouch_offset: float = crouch_camera_drop * _crouch_blend
-	var bob_offset := Vector3.ZERO
+	var target_bob_offset := Vector3.ZERO
+	var motion_intensity: float = lerpf(1.0, camera_aim_motion_multiplier, _aim_blend)
+	var blend_weight: float = 1.0 - exp(-bob_blend_speed * delta)
 
-	if camera_motion_enabled and is_moving:
-		var bob_amount: float = run_bob_amount if is_running else walk_bob_amount
-		var frequency: float = bob_frequency * (1.2 if is_running else 1.0)
-		_bob_time += delta * frequency
-		bob_offset.y = sin(_bob_time * TAU) * bob_amount
-		bob_offset.x = cos(_bob_time * TAU * 0.5) * bob_amount * 0.35
+	if camera_motion_enabled:
+		var target_motion_speed: float = horizontal_speed if is_on_ground else 0.0
+		_smoothed_motion_speed = lerpf(_smoothed_motion_speed, target_motion_speed, blend_weight)
+
+		var speed_blend: float = clampf((_smoothed_motion_speed - 0.35) / maxf(walk_speed, 0.001), 0.0, 1.0)
+		var target_bob_blend: float = speed_blend if is_on_ground else 0.0
+		_bob_blend = lerpf(_bob_blend, target_bob_blend, blend_weight)
+
+		var entry_blend: float = lerpf(bob_entry_floor, 1.0, _bob_blend)
+
+		if _bob_blend > 0.01:
+			var run_blend: float = clampf((_smoothed_motion_speed - walk_speed) / maxf(run_speed - walk_speed, 0.001), 0.0, 1.0)
+			var stride_length: float = lerpf(walk_stride_length, run_stride_length, run_blend if is_running else run_blend * 0.65)
+			var stride_frequency: float = (_smoothed_motion_speed / maxf(stride_length, 0.001)) * bob_frequency_scale
+			_bob_time += delta * stride_frequency
+
+			var bob_amount: float = lerpf(walk_bob_amount, run_bob_amount, run_blend) * motion_intensity * entry_blend
+			var stride_wave: float = sin(_bob_time * TAU)
+			target_bob_offset.y = stride_wave * bob_amount
+			target_bob_offset.x = stride_wave * bob_amount * bob_lateral_ratio
+			target_bob_offset.z = cos(_bob_time * TAU) * bob_amount * bob_forward_ratio
+		elif is_on_ground:
+			_breath_time += delta * idle_breath_frequency
+			var breath_wave: float = sin(_breath_time * TAU)
+			var breath_amount: float = idle_breath_amount * motion_intensity
+			target_bob_offset.y = breath_wave * breath_amount
+			target_bob_offset.x = sin(_breath_time * TAU * 0.5) * breath_amount * 0.35
+			target_bob_offset.z = cos(_breath_time * TAU * 0.33) * breath_amount * 0.2
+
+		var bob_follow_weight: float = lerpf(blend_weight, minf(blend_weight * 1.65, 1.0), _bob_blend)
+		_smoothed_bob_offset = _smoothed_bob_offset.lerp(target_bob_offset, bob_follow_weight)
+
+		var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+		var raw_strafe_factor: float = clampf(local_velocity.x / maxf(run_speed * 0.85, 0.001), -1.0, 1.0)
+		_smoothed_strafe_factor = lerpf(_smoothed_strafe_factor, raw_strafe_factor, blend_weight)
+		var tilt_strength: float = lerpf(0.45, 1.0, _bob_blend) * motion_intensity
+		var target_roll: float = -_smoothed_strafe_factor * camera_roll_amount * tilt_strength
+		var strafe_pitch: float = _smoothed_strafe_factor * camera_strafe_pitch_amount * tilt_strength
+		var strafe_yaw: float = _smoothed_strafe_factor * camera_strafe_yaw_amount * tilt_strength
+		if is_on_ground and _bob_blend < 0.05:
+			target_roll += sin(_breath_time * TAU * 0.5) * idle_breath_roll_amount * motion_intensity
+		var roll_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
+		_camera_roll = lerpf(_camera_roll, target_roll, roll_weight)
+
+		var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _previous_camera_yaw, -PI, PI))
+		_previous_camera_yaw = rotation.y
+		var look_kick := Vector2(
+			_last_view_delta.y * camera_look_inertia * 0.07,
+			-_last_view_delta.x * camera_look_inertia * 0.05 - yaw_delta_degrees * camera_look_inertia * 0.32
+		)
+		var return_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
+		_camera_pitch_inertia = lerpf(_camera_pitch_inertia + look_kick.x, 0.0, return_weight)
+		_camera_yaw_inertia = lerpf(_camera_yaw_inertia + look_kick.y, 0.0, return_weight)
+		_camera_pitch_inertia = clampf(_camera_pitch_inertia, -2.6, 2.6)
+		_camera_yaw_inertia = clampf(_camera_yaw_inertia, -2.2, 2.2)
+
+		camera.rotation_degrees = Vector3(
+			_camera_pitch_inertia + strafe_pitch + _recoil_pitch_offset,
+			_camera_yaw_inertia + strafe_yaw,
+			_camera_roll
+		)
 	else:
-		_bob_time = 0.0
+		_bob_blend = 0.0
+		_smoothed_bob_offset = Vector3.ZERO
+		_smoothed_motion_speed = 0.0
+		camera.rotation_degrees = Vector3(_recoil_pitch_offset, 0.0, 0.0)
 
 	_landing_offset = move_toward(_landing_offset, 0.0, delta * 0.45)
 	_wall_jump_camera_kick_offset = _wall_jump_camera_kick_offset.move_toward(Vector3.ZERO, delta * maxf(wall_jump_camera_kick * 12.0, 0.05))
-	camera_pivot.position = _standing_camera_pivot_position + bob_offset + _wall_jump_camera_kick_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
+	camera_pivot.position = _standing_camera_pivot_position + _smoothed_bob_offset + _wall_jump_camera_kick_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
 
 
 func _get_horizontal_speed() -> float:
@@ -710,6 +807,7 @@ func _set_active_weapon(index: int) -> void:
 	_weapon_velocity_sway = Vector3.ZERO
 	_previous_yaw = rotation.y
 	_previous_pitch = _pitch_degrees
+	_previous_camera_yaw = rotation.y
 	_active_weapon_index = index
 	weapon = _weapons[index]
 	for weapon_index in range(_weapons.size()):
@@ -754,37 +852,39 @@ func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Tran
 	var target_rotation := Vector3.ZERO
 	if weapon_motion_enabled and _gameplay_input_enabled and not _is_dead:
 		var max_speed: float = maxf(run_speed, 0.001)
-		var strafe_factor: float = clampf(_weapon_velocity_sway.x / max_speed, -1.0, 1.0)
-		var forward_factor: float = clampf(-_weapon_velocity_sway.z / max_speed, -1.0, 1.0)
+		var motion_blend: float = lerpf(0.72, 1.0, _bob_blend)
+		var strafe_factor: float = clampf(_weapon_velocity_sway.x / max_speed, -1.0, 1.0) * motion_blend
+		var forward_factor: float = clampf(-_weapon_velocity_sway.z / max_speed, -1.0, 1.0) * motion_blend
 		var vertical_factor: float = clampf(absf(velocity.y) / maxf(jump_velocity, 0.001), 0.0, 1.0)
 		var motion_scale: float = _get_weapon_motion_scale()
 
 		target_position.x += -strafe_factor * weapon_movement_sway_amount
-		target_position.z += forward_factor * weapon_movement_sway_amount * (0.75 if forward_factor >= 0.0 else 0.45)
-		target_position.x += yaw_delta_degrees * weapon_sway_amount * 0.018
-		target_position.y += pitch_delta_degrees * weapon_sway_amount * 0.012
+		target_position.z += forward_factor * weapon_movement_sway_amount * (0.9 if forward_factor >= 0.0 else 0.55)
+		target_position.x += yaw_delta_degrees * weapon_sway_amount * 0.032
+		target_position.y += pitch_delta_degrees * weapon_sway_amount * 0.022
 		if forward_factor >= 0.0:
-			target_position.y -= forward_factor * weapon_movement_sway_amount * 0.4
+			target_position.y -= forward_factor * weapon_movement_sway_amount * 0.55
 		else:
-			target_position.y += -forward_factor * weapon_movement_sway_amount * 0.25
+			target_position.y += -forward_factor * weapon_movement_sway_amount * 0.35
 		if not is_on_floor():
 			target_position.y -= weapon_jump_drop * vertical_factor
 		if landing_camera_dip > 0.0 and _landing_offset > 0.0:
 			target_position.y -= weapon_landing_kick * clampf(_landing_offset / landing_camera_dip, 0.0, 1.0)
 
-		target_rotation.x += pitch_delta_degrees * weapon_rotation_sway_amount * 0.22
-		target_rotation.y += -yaw_delta_degrees * weapon_rotation_sway_amount * 0.24
-		target_rotation.z += yaw_delta_degrees * weapon_rotation_sway_amount * 0.35
-		target_rotation.z += -strafe_factor * weapon_rotation_sway_amount * 0.8
-		target_rotation.x += forward_factor * weapon_rotation_sway_amount * 0.35
+		target_rotation.x += pitch_delta_degrees * weapon_rotation_sway_amount * 0.34
+		target_rotation.y += -yaw_delta_degrees * weapon_rotation_sway_amount * 0.38
+		target_rotation.z += yaw_delta_degrees * weapon_rotation_sway_amount * 0.55
+		target_rotation.z += -strafe_factor * weapon_rotation_sway_amount * 1.2
+		target_rotation.x += forward_factor * weapon_rotation_sway_amount * 0.48
 
 		target_position *= motion_scale
 		target_rotation *= motion_scale
-		if target_position.length() > 0.16:
-			target_position = target_position.normalized() * 0.16
-		target_rotation.x = clampf(target_rotation.x, -0.18, 0.18)
-		target_rotation.y = clampf(target_rotation.y, -0.16, 0.16)
-		target_rotation.z = clampf(target_rotation.z, -0.18, 0.18)
+		var max_weapon_offset: float = lerpf(0.3, 0.2, _aim_blend)
+		if target_position.length() > max_weapon_offset:
+			target_position = target_position.normalized() * max_weapon_offset
+		target_rotation.x = clampf(target_rotation.x, -0.32, 0.32)
+		target_rotation.y = clampf(target_rotation.y, -0.28, 0.28)
+		target_rotation.z = clampf(target_rotation.z, -0.34, 0.34)
 
 	_weapon_sway_position = _weapon_sway_position.lerp(target_position, smoothing_weight)
 	_weapon_sway_rotation = _weapon_sway_rotation.lerp(target_rotation, smoothing_weight)
@@ -800,7 +900,11 @@ func _get_weapon_motion_scale() -> float:
 		motion_scale *= weapon_run_sway_multiplier
 	if _is_crouching:
 		motion_scale *= weapon_crouch_sway_multiplier
-	return lerpf(motion_scale, weapon_aim_sway_multiplier, _aim_blend)
+
+	var aim_scale: float = weapon_aim_sway_multiplier
+	if _is_aiming and _get_horizontal_speed() > 0.35:
+		aim_scale = maxf(aim_scale, weapon_aim_move_sway_multiplier)
+	return lerpf(motion_scale, aim_scale, _aim_blend)
 
 
 func _should_use_run_fov() -> bool:
@@ -832,10 +936,16 @@ func _on_weapon_fired(fired_weapon: WeaponBase) -> void:
 	if fired_weapon == null:
 		return
 
-	camera.rotation_degrees.x = -fired_weapon.recoil_degrees
+	_recoil_pitch_offset = -fired_weapon.recoil_degrees
 	var tween: Tween = create_tween()
-	tween.tween_property(camera, "rotation_degrees:x", 0.0, 0.11)
+	tween.tween_method(_set_recoil_pitch_offset, _recoil_pitch_offset, 0.0, 0.11)
 	weapon_fired.emit(fired_weapon.weapon_name)
+
+
+func _set_recoil_pitch_offset(value: float) -> void:
+	_recoil_pitch_offset = value
+	if camera != null:
+		camera.rotation_degrees.x = _camera_pitch_inertia + _recoil_pitch_offset
 
 
 func _on_health_died() -> void:
