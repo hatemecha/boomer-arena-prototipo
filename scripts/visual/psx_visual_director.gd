@@ -48,6 +48,11 @@ var _post_process_rect: ColorRect
 var _post_process_material: ShaderMaterial
 var _nearest_filtering_applied: bool = false
 
+var _music_tint_color: Color = Color.WHITE
+var _music_tint_strength: float = 0.0
+var _music_color_levels_override: float = -1.0
+var _music_palette_mix_override: float = -1.0
+
 
 func _ready() -> void:
 	_apply_lens_preset_values(lens_preset)
@@ -84,6 +89,36 @@ func refresh_visual_style() -> void:
 	if enforce_nearest_filtering and not _nearest_filtering_applied:
 		_apply_nearest_filtering(get_tree().current_scene)
 		_nearest_filtering_applied = true
+
+
+func set_music_tint_override(color: Color, strength: float) -> void:
+	_music_tint_color = color
+	_music_tint_strength = clampf(strength, 0.0, 1.0)
+	_apply_post_process_preset()
+
+
+func clear_music_tint_override() -> void:
+	_music_tint_color = Color.WHITE
+	_music_tint_strength = 0.0
+	_apply_post_process_preset()
+
+
+func set_music_shader_override(color_levels_override: float, palette_mix_override: float) -> void:
+	if _post_process_material == null:
+		return
+	_music_color_levels_override = color_levels_override
+	_music_palette_mix_override = palette_mix_override
+	_post_process_material.set_shader_parameter("color_levels", color_levels_override)
+	_post_process_material.set_shader_parameter("palette_mix", palette_mix_override)
+
+
+func clear_music_shader_override() -> void:
+	if _post_process_material == null:
+		return
+	_music_color_levels_override = -1.0
+	_music_palette_mix_override = -1.0
+	_post_process_material.set_shader_parameter("color_levels", color_levels)
+	_post_process_material.set_shader_parameter("palette_mix", palette_mix)
 
 
 func _ensure_post_process() -> void:
@@ -223,11 +258,14 @@ func _apply_post_process_preset() -> void:
 			contrast = 1.22
 			brightness = -0.06
 
-	_post_process_material.set_shader_parameter("color_levels", color_levels)
+	var effective_color_levels := _music_color_levels_override if _music_color_levels_override > 0.0 else color_levels
+	var effective_palette_mix := _music_palette_mix_override if _music_palette_mix_override >= 0.0 else palette_mix
+	_post_process_material.set_shader_parameter("color_levels", effective_color_levels)
 	_post_process_material.set_shader_parameter("dither_strength", dither_strength)
-	_post_process_material.set_shader_parameter("palette_mix", palette_mix)
+	_post_process_material.set_shader_parameter("palette_mix", effective_palette_mix)
 	_apply_lens_shader_parameters()
-	_post_process_material.set_shader_parameter("tint_color", Vector3(tint_color.r, tint_color.g, tint_color.b))
+	var final_tint := tint_color.lerp(_music_tint_color, _music_tint_strength)
+	_post_process_material.set_shader_parameter("tint_color", Vector3(final_tint.r, final_tint.g, final_tint.b))
 	_post_process_material.set_shader_parameter("danger_color", Vector3(danger_color.r, danger_color.g, danger_color.b))
 	_post_process_material.set_shader_parameter("contrast", contrast)
 	_post_process_material.set_shader_parameter("brightness", brightness)
@@ -388,30 +426,24 @@ func _configure_sky_portals() -> void:
 					sky_material,
 					Color(0.35, 0.54, 0.82),
 					Color(0.82, 0.88, 0.9),
-					Color(0.92, 0.92, 0.86),
-					0.52,
-					0.0,
-					1.08
+					Color(0.92, 0.90, 0.84),
+					0.55, 0.0, 1.08, 0.42
 				)
 			TimeOfDayPreset.AFTERNOON:
 				_set_sky_material(
 					sky_material,
-					Color(0.46, 0.45, 0.62),
-					Color(0.86, 0.68, 0.48),
-					Color(0.84, 0.75, 0.64),
-					0.38,
-					0.0,
-					0.96
+					Color(0.30, 0.22, 0.12),
+					Color(0.88, 0.52, 0.18),
+					Color(0.76, 0.42, 0.18),
+					0.82, 0.0, 1.02, 0.68
 				)
 			TimeOfDayPreset.NIGHT:
 				_set_sky_material(
 					sky_material,
 					Color(0.035, 0.055, 0.13),
 					Color(0.16, 0.19, 0.3),
-					Color(0.22, 0.26, 0.4),
-					0.18,
-					0.65,
-					0.72
+					Color(0.14, 0.16, 0.28),
+					0.58, 0.72, 0.72, 0.62
 				)
 
 
@@ -454,7 +486,8 @@ func _set_sky_material(
 	cloud_color: Color,
 	cloud_amount: float,
 	star_amount: float,
-	brightness: float
+	brightness: float,
+	cloud_shadow_strength: float = 0.55
 ) -> void:
 	sky_material.set_shader_parameter("top_color", Vector3(top_color.r, top_color.g, top_color.b))
 	sky_material.set_shader_parameter("horizon_color", Vector3(horizon_color.r, horizon_color.g, horizon_color.b))
@@ -463,6 +496,7 @@ func _set_sky_material(
 	sky_material.set_shader_parameter("cloud_amount", cloud_amount)
 	sky_material.set_shader_parameter("star_amount", star_amount)
 	sky_material.set_shader_parameter("brightness", brightness)
+	sky_material.set_shader_parameter("cloud_shadow", cloud_shadow_strength)
 
 
 func _apply_nearest_filtering(root: Node) -> void:

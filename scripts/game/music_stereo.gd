@@ -19,6 +19,8 @@ const WAREHOUSE_BUS_NAME: StringName = &"WarehouseMusic"
 	"res://assets/music/covers/ulterior_motives.jpg",
 	"res://assets/music/covers/funkytown_lipps_inc.jpg",
 ]
+@export var track_bpms: PackedFloat32Array = [124.0, 122.0]
+@export var track_beat_offsets: PackedFloat32Array = [0.0, 0.0]
 @export_range(0.0, 1.5) var start_volume: float = 1.0
 @export_range(0.5, 6.0) var model_scale: float = 2.5
 @export_range(1.0, 8.0) var interaction_range: float = 4.0
@@ -105,6 +107,29 @@ func get_playback_position() -> float:
 	if player_3d == null or not player_3d.playing:
 		return 0.0
 	return player_3d.get_playback_position()
+
+
+func get_bpm() -> float:
+	if _track_index >= 0 and _track_index < track_bpms.size():
+		return maxf(track_bpms[_track_index], 1.0)
+	return 120.0
+
+
+func get_beat_offset() -> float:
+	if _track_index >= 0 and _track_index < track_beat_offsets.size():
+		return track_beat_offsets[_track_index]
+	return 0.0
+
+
+func get_spectrum_instance() -> AudioEffectSpectrumAnalyzerInstance:
+	var bus_index: int = AudioServer.get_bus_index(WAREHOUSE_BUS_NAME)
+	if bus_index == -1:
+		return null
+	for effect_index in AudioServer.get_bus_effect_count(bus_index):
+		var instance = AudioServer.get_bus_effect_instance(bus_index, effect_index)
+		if instance is AudioEffectSpectrumAnalyzerInstance:
+			return instance as AudioEffectSpectrumAnalyzerInstance
+	return null
 
 
 func apply_remote_state(track_index: int, should_play: bool, playback_position: float) -> void:
@@ -343,3 +368,8 @@ func _ensure_warehouse_audio_bus() -> void:
 	low_pass.cutoff_hz = 9500.0
 	low_pass.resonance = 0.18
 	AudioServer.add_bus_effect(bus_index, low_pass)
+
+	var spectrum := AudioEffectSpectrumAnalyzer.new()
+	spectrum.fft_size = AudioEffectSpectrumAnalyzer.FFT_SIZE_1024
+	spectrum.buffer_length = 0.1
+	AudioServer.add_bus_effect(bus_index, spectrum)

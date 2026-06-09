@@ -28,6 +28,7 @@ var _options_menu: OptionsMenu
 var _lobby_layer: CanvasLayer
 var _lobby_menu
 var _visual_director: PSXVisualDirector
+var _disco_director: MusicDiscoDirector
 var _spawn_manager: SpawnManager
 var _pickup_spawner: PickupSpawner
 var _match_manager: MatchManager
@@ -53,6 +54,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	DefaultInputActions.ensure_default_actions()
 	_visual_director = $PSXVisualDirector as PSXVisualDirector
+	_disco_director = $MusicDiscoDirector as MusicDiscoDirector
 	_setup_managers()
 	_spawn_world_content()
 	_setup_network_manager()
@@ -311,6 +313,8 @@ func _apply_time_of_day_preset(time_of_day_preset: int, should_refresh: bool = t
 	_visual_director.time_of_day_preset = _selected_time_of_day_preset
 	if should_refresh:
 		_visual_director.refresh_visual_style()
+		if _disco_director != null:
+			_disco_director.invalidate_baseline()
 
 
 func _sanitize_time_of_day_preset(time_of_day_preset: int) -> int:
@@ -421,6 +425,8 @@ func _spawn_music_stereo() -> void:
 	for hud in _huds:
 		if hud != null:
 			hud.bind_music_stereo(_music_stereo)
+	if _disco_director != null:
+		_disco_director.bind(_music_stereo, _visual_director)
 
 
 func _register_pickups() -> void:

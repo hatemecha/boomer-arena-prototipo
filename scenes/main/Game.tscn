@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/game.gd" id="1_game"]
 [ext_resource type="PackedScene" path="res://scenes/maps/TestArena.tscn" id="2_arena"]
 [ext_resource type="Script" path="res://scripts/visual/psx_visual_director.gd" id="3_visual_director"]
+[ext_resource type="Script" path="res://scripts/visual/music_disco_director.gd" id="4_disco_director"]
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1_game")
@@ -11,3 +12,6 @@ script = ExtResource("1_game")
 
 [node name="PSXVisualDirector" type="Node" parent="."]
 script = ExtResource("3_visual_director")
+
+[node name="MusicDiscoDirector" type="Node" parent="."]
+script = ExtResource("4_disco_director")

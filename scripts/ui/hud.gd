@@ -40,6 +40,12 @@ const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
 const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(104.0, 72.0)
 const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(220.0, 100.0)
+const MUSIC_PANEL_DEFAULT_TOP: float = 38.0
+const MUSIC_PANEL_DEFAULT_RIGHT_INSET: float = 36.0
+const MUSIC_PANEL_DEFAULT_WIDTH: float = 226.0
+const MUSIC_PANEL_DEFAULT_HEIGHT: float = 40.0
+const MUSIC_PANEL_EXTREME_DEBUG_TOP: float = 72.0
+const MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET: float = 86.0
 const HEALTH_WARN_RATIO: float = 0.3
 
 var _player: PlayerController
@@ -68,6 +74,7 @@ var _music_stereo: MusicStereo
 func _ready() -> void:
 	_ensure_optional_labels()
 	_capture_stats_base_offsets()
+	_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
 	set_debug_visible(_debug_visible)
 	if music_panel != null:
 		music_panel.visible = false
@@ -326,26 +333,39 @@ func _on_music_interaction_hint_changed(text: String, is_visible: bool) -> void:
 
 
 func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
-	if stats == null:
-		return
+	if stats != null:
+		if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
+			stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+			_set_stats_base_offsets(
+				STATS_EXTREME_DEBUG_OFFSET.x,
+				STATS_EXTREME_DEBUG_OFFSET.y,
+				STATS_EXTREME_DEBUG_OFFSET.x + STATS_EXTREME_DEBUG_SIZE.x,
+				STATS_EXTREME_DEBUG_OFFSET.y + STATS_EXTREME_DEBUG_SIZE.y
+			)
+		else:
+			stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+			_set_stats_base_offsets(
+				STATS_DEFAULT_OFFSET.x,
+				STATS_DEFAULT_OFFSET.y,
+				STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x,
+				STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+			)
 
 	if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
-		stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		_set_stats_base_offsets(
-			STATS_EXTREME_DEBUG_OFFSET.x,
-			STATS_EXTREME_DEBUG_OFFSET.y,
-			STATS_EXTREME_DEBUG_OFFSET.x + STATS_EXTREME_DEBUG_SIZE.x,
-			STATS_EXTREME_DEBUG_OFFSET.y + STATS_EXTREME_DEBUG_SIZE.y
-		)
+		_apply_music_panel_layout(MUSIC_PANEL_EXTREME_DEBUG_TOP, MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET)
+	else:
+		_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
+
+
+func _apply_music_panel_layout(top: float, right_inset: float) -> void:
+	if music_panel == null:
 		return
 
-	stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_set_stats_base_offsets(
-		STATS_DEFAULT_OFFSET.x,
-		STATS_DEFAULT_OFFSET.y,
-		STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x,
-		STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
-	)
+	music_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	music_panel.offset_top = top
+	music_panel.offset_bottom = top + MUSIC_PANEL_DEFAULT_HEIGHT
+	music_panel.offset_right = -right_inset
+	music_panel.offset_left = -(right_inset + MUSIC_PANEL_DEFAULT_WIDTH)
 
 
 func _capture_stats_base_offsets() -> void:
