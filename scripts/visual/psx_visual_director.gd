@@ -7,21 +7,29 @@ enum TimeOfDayPreset {
 	NIGHT,
 }
 
+enum LensPreset {
+	OFF,
+	SUBTLE,
+	PSX,
+	HEAVY_DEBUG,
+}
+
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 
 @export var enabled: bool = true
 @export var time_of_day_preset: TimeOfDayPreset = TimeOfDayPreset.NIGHT
+@export var lens_preset: LensPreset = LensPreset.SUBTLE
 @export var post_process_enabled: bool = true
 @export var enforce_nearest_filtering: bool = true
 @export_range(0.0, 0.08, 0.005) var dither_strength: float = 0.025
 @export_range(2.0, 16.0, 1.0) var color_levels: float = 6.0
 @export_range(0.0, 1.0, 0.01) var palette_mix: float = 0.42
-@export_range(0.0, 0.2, 0.002) var fisheye_strength: float = 0.06
-@export_range(0.0, 0.02, 0.0005) var chromatic_aberration_strength: float = 0.0018
-@export_range(0.0, 1.0, 0.01) var vignette_strength: float = 0.18
-@export_range(0.2, 1.5, 0.01) var vignette_radius: float = 1.08
-@export_range(0.05, 1.0, 0.01) var vignette_softness: float = 0.72
-@export_range(0.0, 0.5, 0.01) var lens_dirt_strength: float = 0.05
+@export_range(0.0, 0.12, 0.001) var fisheye_strength: float = 0.022
+@export_range(0.0, 0.008, 0.00025) var chromatic_aberration_strength: float = 0.0008
+@export_range(0.0, 0.5, 0.005) var vignette_strength: float = 0.055
+@export_range(0.8, 1.8, 0.01) var vignette_radius: float = 1.32
+@export_range(0.1, 1.0, 0.01) var vignette_softness: float = 0.42
+@export_range(0.0, 0.2, 0.005) var lens_dirt_strength: float = 0.0
 
 var _post_process_layer: CanvasLayer
 var _post_process_rect: ColorRect
@@ -30,6 +38,7 @@ var _nearest_filtering_applied: bool = false
 
 
 func _ready() -> void:
+	_apply_lens_preset_values(lens_preset)
 	call_deferred("refresh_visual_style")
 
 
@@ -41,6 +50,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func cycle_time_of_day_preset() -> void:
 	time_of_day_preset = ((time_of_day_preset + 1) % TimeOfDayPreset.size()) as TimeOfDayPreset
 	refresh_visual_style()
+
+
+func apply_lens_preset(preset: int) -> void:
+	lens_preset = preset
+	_apply_lens_preset_values(lens_preset)
+	if _post_process_material != null:
+		_apply_lens_shader_parameters()
 
 
 func refresh_visual_style() -> void:
@@ -189,6 +205,49 @@ func _apply_post_process_preset() -> void:
 	_post_process_material.set_shader_parameter("color_levels", color_levels)
 	_post_process_material.set_shader_parameter("dither_strength", dither_strength)
 	_post_process_material.set_shader_parameter("palette_mix", palette_mix)
+	_apply_lens_shader_parameters()
+	_post_process_material.set_shader_parameter("tint_color", Vector3(tint_color.r, tint_color.g, tint_color.b))
+	_post_process_material.set_shader_parameter("danger_color", Vector3(danger_color.r, danger_color.g, danger_color.b))
+	_post_process_material.set_shader_parameter("contrast", contrast)
+	_post_process_material.set_shader_parameter("brightness", brightness)
+
+
+func _apply_lens_preset_values(preset: int) -> void:
+	match preset:
+		LensPreset.OFF:
+			fisheye_strength = 0.0
+			chromatic_aberration_strength = 0.0
+			vignette_strength = 0.0
+			vignette_radius = 1.38
+			vignette_softness = 0.45
+			lens_dirt_strength = 0.0
+		LensPreset.SUBTLE:
+			fisheye_strength = 0.018
+			chromatic_aberration_strength = 0.0005
+			vignette_strength = 0.035
+			vignette_radius = 1.38
+			vignette_softness = 0.45
+			lens_dirt_strength = 0.0
+		LensPreset.PSX:
+			fisheye_strength = 0.026
+			chromatic_aberration_strength = 0.0008
+			vignette_strength = 0.06
+			vignette_radius = 1.30
+			vignette_softness = 0.42
+			lens_dirt_strength = 0.005
+		LensPreset.HEAVY_DEBUG:
+			fisheye_strength = 0.06
+			chromatic_aberration_strength = 0.0018
+			vignette_strength = 0.18
+			vignette_radius = 1.08
+			vignette_softness = 0.72
+			lens_dirt_strength = 0.05
+
+
+func _apply_lens_shader_parameters() -> void:
+	if _post_process_material == null:
+		return
+
 	_post_process_material.set_shader_parameter("fisheye_strength", fisheye_strength)
 	_post_process_material.set_shader_parameter("chromatic_aberration_strength", chromatic_aberration_strength)
 	_post_process_material.set_shader_parameter("vignette_strength", vignette_strength)
@@ -196,10 +255,6 @@ func _apply_post_process_preset() -> void:
 	_post_process_material.set_shader_parameter("vignette_softness", vignette_softness)
 	_post_process_material.set_shader_parameter("lens_dirt_strength", lens_dirt_strength)
 	_post_process_material.set_shader_parameter("lens_aspect_ratio", _get_viewport_aspect_ratio())
-	_post_process_material.set_shader_parameter("tint_color", Vector3(tint_color.r, tint_color.g, tint_color.b))
-	_post_process_material.set_shader_parameter("danger_color", Vector3(danger_color.r, danger_color.g, danger_color.b))
-	_post_process_material.set_shader_parameter("contrast", contrast)
-	_post_process_material.set_shader_parameter("brightness", brightness)
 
 
 func _get_viewport_aspect_ratio() -> float:

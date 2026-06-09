@@ -6,12 +6,12 @@ uniform float dither_strength : hint_range(0.0, 0.08, 0.005) = 0.025;
 uniform float palette_mix : hint_range(0.0, 1.0, 0.01) = 0.65;
 uniform float contrast : hint_range(0.5, 1.8, 0.01) = 1.12;
 uniform float brightness : hint_range(-0.2, 0.2, 0.01) = -0.02;
-uniform float fisheye_strength : hint_range(0.0, 0.2, 0.002) = 0.06;
-uniform float chromatic_aberration_strength : hint_range(0.0, 0.02, 0.0005) = 0.0018;
-uniform float vignette_strength : hint_range(0.0, 1.0, 0.01) = 0.18;
-uniform float vignette_radius : hint_range(0.2, 1.5, 0.01) = 1.08;
-uniform float vignette_softness : hint_range(0.05, 1.0, 0.01) = 0.72;
-uniform float lens_dirt_strength : hint_range(0.0, 0.5, 0.01) = 0.05;
+uniform float fisheye_strength : hint_range(0.0, 0.12, 0.001) = 0.022;
+uniform float chromatic_aberration_strength : hint_range(0.0, 0.008, 0.00025) = 0.0008;
+uniform float vignette_strength : hint_range(0.0, 0.5, 0.005) = 0.055;
+uniform float vignette_radius : hint_range(0.8, 1.8, 0.01) = 1.32;
+uniform float vignette_softness : hint_range(0.1, 1.0, 0.01) = 0.42;
+uniform float lens_dirt_strength : hint_range(0.0, 0.2, 0.005) = 0.0;
 uniform float lens_aspect_ratio : hint_range(0.5, 3.0, 0.01) = 1.7778;
 uniform vec3 tint_color = vec3(0.94, 0.92, 0.86);
 uniform vec3 danger_color = vec3(0.85, 0.06, 0.035);
@@ -53,13 +53,13 @@ float soft_spot(vec2 uv, vec2 center, float radius, float softness) {
 
 vec2 to_lens_space(vec2 screen_uv) {
 	vec2 centered_uv = screen_uv * 2.0 - 1.0;
-	centered_uv.x *= lens_aspect_ratio;
+	centered_uv.x *= mix(1.0, lens_aspect_ratio, 0.45);
 	return centered_uv;
 }
 
 vec2 from_lens_space(vec2 lens_uv) {
 	vec2 centered_uv = lens_uv;
-	centered_uv.x /= lens_aspect_ratio;
+	centered_uv.x /= mix(1.0, lens_aspect_ratio, 0.45);
 	return centered_uv * 0.5 + vec2(0.5);
 }
 
@@ -72,7 +72,9 @@ vec2 sample_barrel_uv(vec2 screen_uv, float strength) {
 
 	float lens_distance_squared = lens_distance * lens_distance;
 	float lens_distance_fourth = lens_distance_squared * lens_distance_squared;
-	float distorted_distance = lens_distance * (1.0 + strength * lens_distance_squared + strength * 0.1 * lens_distance_fourth);
+	float distortion_edge_mask = smoothstep(0.25, 1.25, lens_distance);
+	float effective_strength = strength * distortion_edge_mask;
+	float distorted_distance = lens_distance * (1.0 + effective_strength * lens_distance_squared + effective_strength * 0.08 * lens_distance_fourth);
 	vec2 distorted_lens_uv = lens_uv * (distorted_distance / lens_distance);
 	return from_lens_space(distorted_lens_uv);
 }
@@ -80,17 +82,15 @@ vec2 sample_barrel_uv(vec2 screen_uv, float strength) {
 void fragment() {
 	vec2 lens_space = to_lens_space(SCREEN_UV);
 	float lens_distance = length(lens_space);
-	float edge_mask = smoothstep(0.55, vignette_radius + vignette_softness, lens_distance);
+	float chromatic_edge_mask = smoothstep(0.65, 1.25, lens_distance);
+	float vignette_mask = smoothstep(vignette_radius, vignette_radius + vignette_softness, lens_distance);
+	float grain_edge_mask = smoothstep(0.85, 1.45, lens_distance);
+	float lens_dirt_mask = smoothstep(0.75, 1.35, lens_distance);
 	vec2 distorted_uv = sample_barrel_uv(SCREEN_UV, fisheye_strength);
-	float sample_oob = max(
-		max(max(0.0, -distorted_uv.x), max(0.0, -distorted_uv.y)),
-		max(max(0.0, distorted_uv.x - 1.0), max(0.0, distorted_uv.y - 1.0))
-	);
-	float sample_valid = 1.0 - smoothstep(0.0, 0.08, sample_oob);
 	distorted_uv = clamp(distorted_uv, vec2(0.001), vec2(0.999));
 
 	vec2 centered_uv = SCREEN_UV * 2.0 - 1.0;
-	vec2 aberration_offset = centered_uv * chromatic_aberration_strength * (0.2 + edge_mask * 1.1);
+	vec2 aberration_offset = centered_uv * chromatic_aberration_strength * chromatic_edge_mask;
 	float red_channel = texture(screen_texture, clamp(distorted_uv + aberration_offset, vec2(0.001), vec2(0.999))).r;
 	float green_channel = texture(screen_texture, distorted_uv).g;
 	float blue_channel = texture(screen_texture, clamp(distorted_uv - aberration_offset, vec2(0.001), vec2(0.999))).b;
@@ -104,19 +104,16 @@ void fragment() {
 	vec3 quantized_color = floor(adjusted_color * color_levels) / color_levels;
 	float red_signal = smoothstep(0.35, 0.9, quantized_color.r - max(quantized_color.g, quantized_color.b));
 	vec3 limited_palette_color = mix(quantized_color * tint_color, danger_color, red_signal * 0.32);
-	float vignette_mask = smoothstep(vignette_radius, vignette_radius + vignette_softness, lens_distance);
 	float vignette = 1.0 - vignette_mask * vignette_strength;
-	vignette *= sample_valid;
 
-	float scanline = sin(FRAGCOORD.y * 2.4) * 0.012;
-	float grain = (hash_21(FRAGCOORD.xy) - 0.5) * 0.035;
+	float scanline = sin(FRAGCOORD.y * 2.4) * 0.006;
+	float grain = (hash_21(FRAGCOORD.xy) - 0.5) * 0.015;
 	float lens_dirt = soft_spot(SCREEN_UV, vec2(0.18, 0.62), 0.045, 0.12);
 	lens_dirt += soft_spot(SCREEN_UV, vec2(0.78, 0.66), 0.035, 0.10);
 	lens_dirt += soft_spot(SCREEN_UV, vec2(0.88, 0.48), 0.018, 0.06);
-	lens_dirt *= lens_dirt_strength * edge_mask;
-	vec3 lens_bleed = vec3(0.42, 0.72, 1.0) * lens_dirt;
+	lens_dirt *= lens_dirt_strength * lens_dirt_mask;
 
 	vec3 final_color = mix(original_color, limited_palette_color, palette_mix);
-	final_color = final_color * vignette + lens_bleed + vec3((scanline + grain) * edge_mask);
+	final_color = final_color * vignette + vec3(scanline * 0.35 + grain * mix(0.45, 1.0, grain_edge_mask) + lens_dirt * 0.08);
 	COLOR = vec4(clamp(final_color, vec3(0.0), vec3(1.0)), 1.0);
 }

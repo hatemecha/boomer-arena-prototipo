@@ -16,6 +16,7 @@ const FRAME_LIMITS: Array[int] = [0, 30, 60, 120]
 @onready var frame_limit_option: OptionButton = %FrameLimitOption
 @onready var psx_filter_check: CheckBox = %PsxFilterCheck
 @onready var time_preset_option: OptionButton = %TimePresetOption
+@onready var lens_preset_option: OptionButton = %LensPresetOption
 @onready var crosshair_check: CheckBox = %CrosshairCheck
 @onready var debug_hud_check: CheckBox = %DebugHudCheck
 @onready var debug_draw_check: CheckBox = %DebugDrawCheck
@@ -94,6 +95,12 @@ func _populate_options() -> void:
 	time_preset_option.add_item("Tarde", PSXVisualDirector.TimeOfDayPreset.AFTERNOON)
 	time_preset_option.add_item("Noche", PSXVisualDirector.TimeOfDayPreset.NIGHT)
 
+	lens_preset_option.clear()
+	lens_preset_option.add_item("Apagado", PSXVisualDirector.LensPreset.OFF)
+	lens_preset_option.add_item("Sutil", PSXVisualDirector.LensPreset.SUBTLE)
+	lens_preset_option.add_item("PSX", PSXVisualDirector.LensPreset.PSX)
+	lens_preset_option.add_item("Pesado debug", PSXVisualDirector.LensPreset.HEAVY_DEBUG)
+
 
 func _connect_controls() -> void:
 	resume_button.pressed.connect(_on_resume_pressed)
@@ -104,6 +111,7 @@ func _connect_controls() -> void:
 	frame_limit_option.item_selected.connect(_on_frame_limit_selected)
 	psx_filter_check.toggled.connect(_on_psx_filter_toggled)
 	time_preset_option.item_selected.connect(_on_time_preset_selected)
+	lens_preset_option.item_selected.connect(_on_lens_preset_selected)
 	crosshair_check.toggled.connect(_on_crosshair_toggled)
 	debug_hud_check.toggled.connect(_on_debug_hud_toggled)
 	debug_draw_check.toggled.connect(_on_debug_draw_toggled)
@@ -129,6 +137,7 @@ func _sync_controls_from_game() -> void:
 	if _visual_director != null:
 		psx_filter_check.button_pressed = _visual_director.post_process_enabled
 		_select_option_by_id(time_preset_option, _visual_director.time_of_day_preset)
+		_select_option_by_id(lens_preset_option, _visual_director.lens_preset)
 
 	if _hud != null:
 		crosshair_check.button_pressed = _hud.is_crosshair_enabled()
@@ -218,6 +227,12 @@ func _on_time_preset_selected(index: int) -> void:
 		return
 	_visual_director.time_of_day_preset = time_preset_option.get_item_id(index)
 	_visual_director.refresh_visual_style()
+
+
+func _on_lens_preset_selected(index: int) -> void:
+	if _is_syncing_controls or _visual_director == null:
+		return
+	_visual_director.apply_lens_preset(lens_preset_option.get_item_id(index))
 
 
 func _on_crosshair_toggled(enabled: bool) -> void:
