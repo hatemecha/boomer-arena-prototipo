@@ -470,6 +470,8 @@ func _setup_local_hud(player: PlayerController) -> void:
 	_huds.append(hud)
 	hud.bind_player(player)
 	hud.bind_match(_match_manager, player.player_id)
+	if _visual_director != null:
+		hud.bind_visual_director(_visual_director)
 	_hud_player = player
 	_refresh_network_hud()
 

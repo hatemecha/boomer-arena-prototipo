@@ -9,26 +9,38 @@ enum TimeOfDayPreset {
 
 enum LensPreset {
 	OFF,
-	SUBTLE,
-	PSX,
-	HEAVY_DEBUG,
+	GAMEPLAY,
+	PSX_8MM,
+	EXTREME_DEBUG,
 }
 
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 
+signal lens_preset_changed(preset: LensPreset)
+
 @export var enabled: bool = true
 @export var time_of_day_preset: TimeOfDayPreset = TimeOfDayPreset.NIGHT
-@export var lens_preset: LensPreset = LensPreset.SUBTLE
+@export var lens_preset: LensPreset = LensPreset.PSX_8MM
 @export var post_process_enabled: bool = true
 @export var enforce_nearest_filtering: bool = true
+@export var glow_enabled: bool = true
 @export_range(0.0, 0.08, 0.005) var dither_strength: float = 0.025
 @export_range(2.0, 16.0, 1.0) var color_levels: float = 6.0
-@export_range(0.0, 1.0, 0.01) var palette_mix: float = 0.42
-@export_range(0.0, 0.12, 0.001) var fisheye_strength: float = 0.022
-@export_range(0.0, 0.008, 0.00025) var chromatic_aberration_strength: float = 0.0008
-@export_range(0.0, 0.5, 0.005) var vignette_strength: float = 0.055
-@export_range(0.8, 1.8, 0.01) var vignette_radius: float = 1.32
-@export_range(0.1, 1.0, 0.01) var vignette_softness: float = 0.42
+@export_range(0.0, 1.0, 0.01) var palette_mix: float = 0.55
+@export_range(0.0, 0.35, 0.001) var fisheye_strength: float = 0.018
+@export_range(0.0, 1.0, 0.01) var fisheye_center_flatness: float = 0.45
+@export_range(0.9, 1.2, 0.001) var lens_zoom_compensation: float = 1.015
+@export_range(0.0, 0.02, 0.00025) var chromatic_aberration_strength: float = 0.00045
+@export_range(0.0, 1.2, 0.01) var chromatic_edge_start: float = 0.70
+@export_range(0.0, 1.0, 0.005) var vignette_strength: float = 0.035
+@export_range(0.4, 1.8, 0.01) var vignette_radius: float = 1.35
+@export_range(0.05, 1.0, 0.01) var vignette_softness: float = 0.35
+@export_range(0.0, 1.0, 0.005) var circular_mask_strength: float = 0.0
+@export_range(0.4, 1.8, 0.01) var circular_mask_radius: float = 1.20
+@export_range(0.01, 0.8, 0.01) var circular_mask_softness: float = 0.25
+@export_range(0.0, 0.12, 0.001) var film_grain_strength: float = 0.010
+@export_range(0.0, 60.0, 0.1) var film_grain_speed: float = 14.0
+@export_range(20.0, 500.0, 1.0) var film_grain_scale: float = 180.0
 @export_range(0.0, 0.2, 0.005) var lens_dirt_strength: float = 0.0
 
 var _post_process_layer: CanvasLayer
@@ -52,11 +64,12 @@ func cycle_time_of_day_preset() -> void:
 	refresh_visual_style()
 
 
-func apply_lens_preset(preset: int) -> void:
-	lens_preset = preset
+func apply_lens_preset(preset: LensPreset) -> void:
+	var safe_preset: int = clampi(int(preset), 0, LensPreset.size() - 1)
+	lens_preset = safe_preset as LensPreset
 	_apply_lens_preset_values(lens_preset)
-	if _post_process_material != null:
-		_apply_lens_shader_parameters()
+	refresh_visual_style()
+	lens_preset_changed.emit(lens_preset)
 
 
 func refresh_visual_style() -> void:
@@ -119,13 +132,21 @@ func _apply_environment_preset() -> void:
 	_configure_exterior_light()
 	_configure_window_fill_lights()
 	_configure_sky_portals()
+	_configure_ceiling_light_panels()
 
 
 func _configure_environment(environment: Environment) -> void:
 	environment.background_mode = Environment.BG_COLOR
 	environment.fog_enabled = true
 	environment.volumetric_fog_enabled = false
-	environment.glow_enabled = false
+	environment.glow_enabled = glow_enabled
+	if glow_enabled:
+		environment.glow_intensity = 0.25
+		environment.glow_strength = 0.45
+		environment.glow_bloom = 0.08
+		environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+		environment.glow_hdr_threshold = 1.05
+		environment.glow_hdr_scale = 1.2
 	environment.ssao_enabled = false
 	environment.ssil_enabled = false
 	environment.sdfgi_enabled = false
@@ -133,32 +154,32 @@ func _configure_environment(environment: Environment) -> void:
 
 	match time_of_day_preset:
 		TimeOfDayPreset.MORNING:
-			environment.background_color = Color(0.47, 0.45, 0.4)
-			environment.ambient_light_color = Color(0.78, 0.72, 0.58)
-			environment.ambient_light_energy = 0.42
-			environment.fog_light_color = Color(0.72, 0.68, 0.58)
-			environment.fog_density = 0.018
+			environment.background_color = Color(0.38, 0.42, 0.38)
+			environment.ambient_light_color = Color(0.62, 0.72, 0.66)
+			environment.ambient_light_energy = 0.44
+			environment.fog_light_color = Color(0.50, 0.60, 0.55)
+			environment.fog_density = 0.016
 			environment.adjustment_brightness = 0.96
-			environment.adjustment_contrast = 1.05
+			environment.adjustment_contrast = 1.10
 			environment.adjustment_saturation = 0.58
 		TimeOfDayPreset.AFTERNOON:
-			environment.background_color = Color(0.18, 0.15, 0.13)
-			environment.ambient_light_color = Color(0.66, 0.54, 0.44)
-			environment.ambient_light_energy = 0.46
-			environment.fog_light_color = Color(0.48, 0.38, 0.32)
+			environment.background_color = Color(0.13, 0.10, 0.08)
+			environment.ambient_light_color = Color(0.55, 0.42, 0.34)
+			environment.ambient_light_energy = 0.40
+			environment.fog_light_color = Color(0.40, 0.30, 0.26)
 			environment.fog_density = 0.02
-			environment.adjustment_brightness = 0.98
-			environment.adjustment_contrast = 1.08
-			environment.adjustment_saturation = 0.56
+			environment.adjustment_brightness = 0.94
+			environment.adjustment_contrast = 1.16
+			environment.adjustment_saturation = 0.55
 		TimeOfDayPreset.NIGHT:
-			environment.background_color = Color(0.055, 0.065, 0.085)
-			environment.ambient_light_color = Color(0.46, 0.52, 0.66)
-			environment.ambient_light_energy = 0.62
-			environment.fog_light_color = Color(0.26, 0.3, 0.38)
-			environment.fog_density = 0.022
-			environment.adjustment_brightness = 1.04
-			environment.adjustment_contrast = 1.08
-			environment.adjustment_saturation = 0.62
+			environment.background_color = Color(0.035, 0.045, 0.05)
+			environment.ambient_light_color = Color(0.32, 0.48, 0.50)
+			environment.ambient_light_energy = 0.42
+			environment.fog_light_color = Color(0.20, 0.30, 0.32)
+			environment.fog_density = 0.024
+			environment.adjustment_brightness = 0.90
+			environment.adjustment_contrast = 1.22
+			environment.adjustment_saturation = 0.50
 
 
 func _configure_directional_light(directional_light: DirectionalLight3D) -> void:
@@ -184,23 +205,23 @@ func _apply_post_process_preset() -> void:
 		return
 
 	var tint_color: Color
-	var danger_color: Color = Color(0.86, 0.05, 0.035)
+	var danger_color: Color = Color(0.74, 0.025, 0.02)
 	var contrast: float
 	var brightness: float
 
 	match time_of_day_preset:
 		TimeOfDayPreset.MORNING:
-			tint_color = Color(0.94, 0.9, 0.76)
-			contrast = 1.04
-			brightness = 0.015
+			tint_color = Color(0.70, 0.86, 0.78)
+			contrast = 1.10
+			brightness = -0.03
 		TimeOfDayPreset.AFTERNOON:
-			tint_color = Color(0.9, 0.78, 0.66)
-			contrast = 1.06
-			brightness = 0.015
+			tint_color = Color(0.82, 0.72, 0.62)
+			contrast = 1.16
+			brightness = -0.04
 		TimeOfDayPreset.NIGHT:
-			tint_color = Color(0.72, 0.78, 0.96)
-			contrast = 1.08
-			brightness = 0.035
+			tint_color = Color(0.62, 0.78, 0.82)
+			contrast = 1.22
+			brightness = -0.06
 
 	_post_process_material.set_shader_parameter("color_levels", color_levels)
 	_post_process_material.set_shader_parameter("dither_strength", dither_strength)
@@ -212,36 +233,72 @@ func _apply_post_process_preset() -> void:
 	_post_process_material.set_shader_parameter("brightness", brightness)
 
 
-func _apply_lens_preset_values(preset: int) -> void:
+func _apply_lens_preset_values(preset: LensPreset) -> void:
 	match preset:
 		LensPreset.OFF:
 			fisheye_strength = 0.0
+			fisheye_center_flatness = 1.0
+			lens_zoom_compensation = 1.0
 			chromatic_aberration_strength = 0.0
+			chromatic_edge_start = 1.2
 			vignette_strength = 0.0
-			vignette_radius = 1.38
-			vignette_softness = 0.45
+			vignette_radius = 1.35
+			vignette_softness = 0.35
+			circular_mask_strength = 0.0
+			circular_mask_radius = 1.20
+			circular_mask_softness = 0.25
+			film_grain_strength = 0.0
+			film_grain_speed = 14.0
+			film_grain_scale = 180.0
 			lens_dirt_strength = 0.0
-		LensPreset.SUBTLE:
+		LensPreset.GAMEPLAY:
 			fisheye_strength = 0.018
-			chromatic_aberration_strength = 0.0005
+			fisheye_center_flatness = 0.45
+			lens_zoom_compensation = 1.015
+			chromatic_aberration_strength = 0.00045
+			chromatic_edge_start = 0.70
 			vignette_strength = 0.035
-			vignette_radius = 1.38
-			vignette_softness = 0.45
+			vignette_radius = 1.35
+			vignette_softness = 0.35
+			circular_mask_strength = 0.0
+			circular_mask_radius = 1.20
+			circular_mask_softness = 0.25
+			film_grain_strength = 0.010
+			film_grain_speed = 14.0
+			film_grain_scale = 180.0
 			lens_dirt_strength = 0.0
-		LensPreset.PSX:
-			fisheye_strength = 0.026
-			chromatic_aberration_strength = 0.0008
-			vignette_strength = 0.06
-			vignette_radius = 1.30
-			vignette_softness = 0.42
-			lens_dirt_strength = 0.005
-		LensPreset.HEAVY_DEBUG:
-			fisheye_strength = 0.06
+		LensPreset.PSX_8MM:
+			fisheye_strength = 0.075
+			fisheye_center_flatness = 0.35
+			lens_zoom_compensation = 1.035
 			chromatic_aberration_strength = 0.0018
-			vignette_strength = 0.18
-			vignette_radius = 1.08
-			vignette_softness = 0.72
-			lens_dirt_strength = 0.05
+			chromatic_edge_start = 0.50
+			vignette_strength = 0.08
+			vignette_radius = 1.12
+			vignette_softness = 0.38
+			circular_mask_strength = 0.20
+			circular_mask_radius = 1.20
+			circular_mask_softness = 0.22
+			film_grain_strength = 0.022
+			film_grain_speed = 18.0
+			film_grain_scale = 160.0
+			lens_dirt_strength = 0.01
+		LensPreset.EXTREME_DEBUG:
+			fisheye_strength = 0.16
+			fisheye_center_flatness = 0.25
+			lens_zoom_compensation = 1.06
+			chromatic_aberration_strength = 0.004
+			chromatic_edge_start = 0.35
+			vignette_strength = 0.11
+			vignette_radius = 0.96
+			vignette_softness = 0.35
+			circular_mask_strength = 0.45
+			circular_mask_radius = 1.05
+			circular_mask_softness = 0.18
+			film_grain_strength = 0.035
+			film_grain_speed = 22.0
+			film_grain_scale = 140.0
+			lens_dirt_strength = 0.03
 
 
 func _apply_lens_shader_parameters() -> void:
@@ -249,10 +306,19 @@ func _apply_lens_shader_parameters() -> void:
 		return
 
 	_post_process_material.set_shader_parameter("fisheye_strength", fisheye_strength)
+	_post_process_material.set_shader_parameter("fisheye_center_flatness", fisheye_center_flatness)
+	_post_process_material.set_shader_parameter("lens_zoom_compensation", lens_zoom_compensation)
 	_post_process_material.set_shader_parameter("chromatic_aberration_strength", chromatic_aberration_strength)
+	_post_process_material.set_shader_parameter("chromatic_edge_start", chromatic_edge_start)
 	_post_process_material.set_shader_parameter("vignette_strength", vignette_strength)
 	_post_process_material.set_shader_parameter("vignette_radius", vignette_radius)
 	_post_process_material.set_shader_parameter("vignette_softness", vignette_softness)
+	_post_process_material.set_shader_parameter("circular_mask_strength", circular_mask_strength)
+	_post_process_material.set_shader_parameter("circular_mask_radius", circular_mask_radius)
+	_post_process_material.set_shader_parameter("circular_mask_softness", circular_mask_softness)
+	_post_process_material.set_shader_parameter("film_grain_strength", film_grain_strength)
+	_post_process_material.set_shader_parameter("film_grain_speed", film_grain_speed)
+	_post_process_material.set_shader_parameter("film_grain_scale", film_grain_scale)
 	_post_process_material.set_shader_parameter("lens_dirt_strength", lens_dirt_strength)
 	_post_process_material.set_shader_parameter("lens_aspect_ratio", _get_viewport_aspect_ratio())
 
@@ -347,6 +413,38 @@ func _configure_sky_portals() -> void:
 					0.65,
 					0.72
 				)
+
+
+func _configure_ceiling_light_panels() -> void:
+	var light_panels: Array[MeshInstance3D] = []
+	_collect_meshes_by_prefix(get_tree().current_scene, "LightPanel", light_panels)
+
+	for light_panel in light_panels:
+		if light_panel.material_override != null:
+			_configure_light_panel_material(light_panel.material_override)
+
+		for surface_index in range(light_panel.get_surface_override_material_count()):
+			var surface_override: Material = light_panel.get_surface_override_material(surface_index)
+			if surface_override != null:
+				_configure_light_panel_material(surface_override)
+
+		var mesh: Mesh = light_panel.mesh
+		if mesh == null:
+			continue
+
+		for surface_index in range(mesh.get_surface_count()):
+			var surface_material: Material = mesh.surface_get_material(surface_index)
+			if surface_material != null:
+				_configure_light_panel_material(surface_material)
+
+
+func _configure_light_panel_material(material: Material) -> void:
+	if material is BaseMaterial3D:
+		var base_material: BaseMaterial3D = material as BaseMaterial3D
+		base_material.emission_enabled = true
+		base_material.emission = Color(0.55, 0.85, 0.78)
+		base_material.emission_energy_multiplier = 1.5 if glow_enabled else 1.0
+		base_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 
 
 func _set_sky_material(

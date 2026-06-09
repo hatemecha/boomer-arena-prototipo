@@ -12,10 +12,17 @@ extends Control
 @onready var fps_label: Label = $Stats/FpsLabel
 @onready var position_label: Label = $Stats/PositionLabel
 @onready var speed_label: Label = $Stats/SpeedLabel
-@onready var crosshair: Label = $Crosshair
+@onready var stats: VBoxContainer = $Stats
+@onready var crosshair: Control = $Crosshair
 @onready var aim_dot: ColorRect = $AimDot
 
+const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
+const STATS_DEFAULT_SIZE: Vector2 = Vector2(200.0, 100.0)
+const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(104.0, 72.0)
+const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(200.0, 100.0)
+
 var _player: PlayerController
+var _visual_director: PSXVisualDirector
 var _active_weapon: WeaponBase
 var _health: int = 100
 var _max_health: int = 100
@@ -63,6 +70,19 @@ func bind_player(player: PlayerController) -> void:
 	_on_weapon_state_changed(_active_weapon.state)
 
 
+func bind_visual_director(visual_director: PSXVisualDirector) -> void:
+	if visual_director == null:
+		return
+
+	if _visual_director != null and _visual_director.lens_preset_changed.is_connected(_on_lens_preset_changed):
+		_visual_director.lens_preset_changed.disconnect(_on_lens_preset_changed)
+
+	_visual_director = visual_director
+	if not _visual_director.lens_preset_changed.is_connected(_on_lens_preset_changed):
+		_visual_director.lens_preset_changed.connect(_on_lens_preset_changed)
+	_apply_lens_safe_layout(_visual_director.lens_preset)
+
+
 func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 	if match_manager == null:
 		push_error("HUD cannot bind a null match manager.")
@@ -88,9 +108,11 @@ func _process(_delta: float) -> void:
 		speed_label.text = "DEBUG SPEED: %.1f" % _debug_speed
 	var is_aiming: bool = _active_weapon != null and _active_weapon.is_aiming
 	if crosshair != null:
-		crosshair.visible = _crosshair_enabled and not is_aiming
+		crosshair.visible = _crosshair_enabled
+		if crosshair.has_method("set_aiming"):
+			crosshair.call("set_aiming", is_aiming)
 	if aim_dot != null:
-		aim_dot.visible = _crosshair_enabled and is_aiming
+		aim_dot.visible = false
 
 
 func set_debug_visible(value: bool) -> void:
@@ -193,8 +215,30 @@ func _refresh_score_label() -> void:
 	score_label.text = "SCORE: %s" % _match_manager.format_score_line()
 
 
+func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
+	_apply_lens_safe_layout(preset)
+
+
+func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
+	if stats == null:
+		return
+
+	if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
+		stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		stats.offset_left = STATS_EXTREME_DEBUG_OFFSET.x
+		stats.offset_top = STATS_EXTREME_DEBUG_OFFSET.y
+		stats.offset_right = STATS_EXTREME_DEBUG_OFFSET.x + STATS_EXTREME_DEBUG_SIZE.x
+		stats.offset_bottom = STATS_EXTREME_DEBUG_OFFSET.y + STATS_EXTREME_DEBUG_SIZE.y
+		return
+
+	stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	stats.offset_left = STATS_DEFAULT_OFFSET.x
+	stats.offset_top = STATS_DEFAULT_OFFSET.y
+	stats.offset_right = STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x
+	stats.offset_bottom = STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+
+
 func _ensure_optional_labels() -> void:
-	var stats: VBoxContainer = $Stats
 	if player_label == null:
 		player_label = Label.new()
 		player_label.name = "PlayerLabel"

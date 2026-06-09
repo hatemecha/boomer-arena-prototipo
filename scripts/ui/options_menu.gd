@@ -96,10 +96,10 @@ func _populate_options() -> void:
 	time_preset_option.add_item("Noche", PSXVisualDirector.TimeOfDayPreset.NIGHT)
 
 	lens_preset_option.clear()
-	lens_preset_option.add_item("Apagado", PSXVisualDirector.LensPreset.OFF)
-	lens_preset_option.add_item("Sutil", PSXVisualDirector.LensPreset.SUBTLE)
-	lens_preset_option.add_item("PSX", PSXVisualDirector.LensPreset.PSX)
-	lens_preset_option.add_item("Pesado debug", PSXVisualDirector.LensPreset.HEAVY_DEBUG)
+	lens_preset_option.add_item("Off", PSXVisualDirector.LensPreset.OFF)
+	lens_preset_option.add_item("Gameplay", PSXVisualDirector.LensPreset.GAMEPLAY)
+	lens_preset_option.add_item("PSX 8mm", PSXVisualDirector.LensPreset.PSX_8MM)
+	lens_preset_option.add_item("Extreme Debug", PSXVisualDirector.LensPreset.EXTREME_DEBUG)
 
 
 func _connect_controls() -> void:
@@ -232,7 +232,7 @@ func _on_time_preset_selected(index: int) -> void:
 func _on_lens_preset_selected(index: int) -> void:
 	if _is_syncing_controls or _visual_director == null:
 		return
-	_visual_director.apply_lens_preset(lens_preset_option.get_item_id(index))
+	_visual_director.apply_lens_preset(lens_preset_option.get_item_id(index) as PSXVisualDirector.LensPreset)
 
 
 func _on_crosshair_toggled(enabled: bool) -> void:
