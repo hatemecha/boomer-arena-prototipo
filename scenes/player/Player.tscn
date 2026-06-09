@@ -43,7 +43,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, 0)
 [node name="PlayerCamera" type="Camera3D" parent="CameraPivot" unique_id=534079785]
 unique_name_in_owner = true
 current = true
-fov = 95.0
+fov = 90.0
 
 [node name="SMGAimPose" type="Marker3D" parent="CameraPivot/PlayerCamera" unique_id=2062942031]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.264, -0.13)

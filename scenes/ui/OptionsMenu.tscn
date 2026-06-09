@@ -75,7 +75,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 0)
 layout_mode = 2
 min_value = 0.02
-max_value = 0.25
+max_value = 0.5
 step = 0.01
 value = 0.25
 
@@ -102,13 +102,13 @@ layout_mode = 2
 min_value = 75.0
 max_value = 110.0
 step = 1.0
-value = 95.0
+value = 90.0
 
 [node name="FovValue" type="Label" parent="Panel/Margin/Scroll/Content/FovRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(36, 0)
 layout_mode = 2
-text = "95"
+text = "90"
 horizontal_alignment = 2
 
 [node name="CrosshairCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
@@ -182,7 +182,6 @@ text = "Mostrar datos de debug"
 [node name="DebugDrawCheck" type="CheckBox" parent="Panel/Margin/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-button_pressed = true
 text = "Debug Draw 3D"
 
 [node name="DevelopmentActions" type="HBoxContainer" parent="Panel/Margin/Scroll/Content"]

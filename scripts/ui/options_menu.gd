@@ -167,7 +167,7 @@ func _on_mouse_sensitivity_changed(value: float) -> void:
 	_update_mouse_sensitivity_label(value)
 	if _is_syncing_controls or _player == null:
 		return
-	_player.mouse_sensitivity = clampf(value, 0.02, 0.25)
+	_player.mouse_sensitivity = clampf(value, 0.02, 0.50)
 
 
 func _on_fov_changed(value: float) -> void:

@@ -3,7 +3,7 @@ extends Node
 
 signal debug_draw_toggled(enabled: bool)
 
-@export var debug_draw_enabled: bool = true
+@export var debug_draw_enabled: bool = false
 @export_range(0.01, 2.0) var shot_ray_duration: float = 0.15
 
 var _spawn_manager: SpawnManager

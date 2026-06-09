@@ -1,25 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/pickups/ammo_pickup.gd" id="1_ammo"]
 [ext_resource type="PackedScene" path="res://assets/models/pickups/low_poly_ammo_can.glb" id="2_ammo_can"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_pickup"]
 radius = 0.75
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_pickup_marker"]
-top_radius = 0.72
-bottom_radius = 0.72
-height = 0.035
-radial_segments = 12
-rings = 1
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ammo_marker"]
-albedo_color = Color(0.88, 0.62, 0.08, 1)
-texture_filter = 0
-emission_enabled = true
-emission = Color(0.9, 0.46, 0.02, 1)
-emission_energy_multiplier = 0.55
-roughness = 1.0
 
 [node name="AmmoPickup" type="Area3D"]
 script = ExtResource("1_ammo")
@@ -32,11 +17,6 @@ shape = SubResource("SphereShape3D_pickup")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 unique_name_in_owner = true
-
-[node name="PickupMarker" type="MeshInstance3D" parent="VisualRoot"]
-position = Vector3(0, -0.46, 0)
-mesh = SubResource("CylinderMesh_pickup_marker")
-surface_material_override/0 = SubResource("StandardMaterial3D_ammo_marker")
 
 [node name="AmmoCanModel" parent="VisualRoot" instance=ExtResource("2_ammo_can")]
 scale = Vector3(2, 2, 2)
