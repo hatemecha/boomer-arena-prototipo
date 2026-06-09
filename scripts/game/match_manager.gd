@@ -52,6 +52,60 @@ func register_death(player_id: int) -> void:
 	score_changed.emit(player_id, int(player_score["kills"]), int(player_score["deaths"]))
 
 
+func get_score_snapshot() -> Dictionary:
+	var snapshot: Dictionary = {}
+	for player_id in scores.keys():
+		var player_score: Dictionary = scores[player_id]
+		snapshot[int(player_id)] = {
+			"kills": int(player_score.get("kills", 0)),
+			"deaths": int(player_score.get("deaths", 0)),
+		}
+	return snapshot
+
+
+func apply_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
+	scores.clear()
+	match_running = is_match_running
+
+	for raw_player_id in snapshot.keys():
+		var player_id: int = int(raw_player_id)
+		var raw_score: Variant = snapshot[raw_player_id]
+		if not (raw_score is Dictionary):
+			push_warning("Ignoring invalid score snapshot entry for player %d." % player_id)
+			continue
+
+		var score: Dictionary = raw_score
+		var kills: int = int(score.get("kills", 0))
+		var deaths: int = int(score.get("deaths", 0))
+		scores[player_id] = {"kills": kills, "deaths": deaths}
+		score_changed.emit(player_id, kills, deaths)
+
+
+func apply_match_finished(winner_id: int) -> void:
+	match_running = false
+	match_finished.emit(winner_id)
+
+
+func get_kills(player_id: int) -> int:
+	ensure_player(player_id)
+	return int(scores[player_id].get("kills", 0))
+
+
+func get_deaths(player_id: int) -> int:
+	ensure_player(player_id)
+	return int(scores[player_id].get("deaths", 0))
+
+
+func format_score_line() -> String:
+	var player_ids: Array = scores.keys()
+	player_ids.sort()
+
+	var parts: Array[String] = []
+	for player_id in player_ids:
+		parts.append("P%d %d/%d" % [int(player_id), get_kills(int(player_id)), get_deaths(int(player_id))])
+	return "  ".join(parts)
+
+
 func _finish_match(winner_id: int) -> void:
 	match_running = false
 	match_finished.emit(winner_id)

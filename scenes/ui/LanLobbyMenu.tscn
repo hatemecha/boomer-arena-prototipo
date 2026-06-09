@@ -1,0 +1,119 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/lan_lobby_menu.gd" id="1_lobby"]
+
+[node name="LanLobbyMenu" type="Control"]
+process_mode = 3
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+script = ExtResource("1_lobby")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.02, 0.022, 0.028, 0.92)
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -190.0
+offset_top = -142.0
+offset_right = 190.0
+offset_bottom = 142.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Panel/Content"]
+layout_mode = 2
+text = "LAN ARENA"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Select LAN mode."
+horizontal_alignment = 1
+
+[node name="LocalAddressesLabel" type="Label" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "HOST IP: unavailable"
+autowrap_mode = 3
+
+[node name="AddressRow" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AddressLabel" type="Label" parent="Panel/Content/AddressRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "HOST IP"
+
+[node name="AddressEdit" type="LineEdit" parent="Panel/Content/AddressRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "127.0.0.1"
+placeholder_text = "192.168.0.10"
+
+[node name="PortRow" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PortLabel" type="Label" parent="Panel/Content/PortRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "PORT"
+
+[node name="PortSpin" type="SpinBox" parent="Panel/Content/PortRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1024.0
+max_value = 65535.0
+value = 24500.0
+
+[node name="ButtonRow" type="HBoxContainer" parent="Panel/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HostButton" type="Button" parent="Panel/Content/ButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "HOST"
+
+[node name="JoinButton" type="Button" parent="Panel/Content/ButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "JOIN"
+
+[node name="PracticeButton" type="Button" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "PRACTICE OFFLINE"
+
+[node name="DisconnectButton" type="Button" parent="Panel/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+disabled = true
+text = "DISCONNECT"

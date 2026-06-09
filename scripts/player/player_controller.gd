@@ -27,10 +27,17 @@ signal weapon_fired(weapon_name: String)
 @export_range(0, 8) var max_air_jumps: int = 1
 @export var player_id: int = 1
 @export var display_name: String = "Player"
+@export var input_prefix: String = ""
+@export var mouse_look_enabled: bool = true
+@export_range(0.2, 8.0) var gamepad_look_sensitivity: float = 3.0
+@export_range(0.0, 5.0) var respawn_invulnerability_time: float = 1.0
+@export_range(1.0, 40.0) var network_interpolation_speed: float = 18.0
+@export_range(0.5, 20.0) var network_snap_distance: float = 6.0
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/PlayerCamera
 @onready var health: PlayerHealth = $PlayerHealth
+@onready var body_mesh: MeshInstance3D = $BodyMesh
 
 var weapon: WeaponBase
 
@@ -42,8 +49,16 @@ var _weapon_default_transforms: Dictionary = {}
 var _active_weapon_index: int = -1
 var _is_dead: bool = false
 var _gameplay_input_enabled: bool = true
+var _local_control_enabled: bool = true
+var _is_invulnerable: bool = false
+var last_damage_source_player_id: int = 0
 var _is_aiming: bool = false
 var _aim_blend: float = 0.0
+var _has_network_target: bool = false
+var _network_target_position: Vector3 = Vector3.ZERO
+var _network_target_yaw: float = 0.0
+var _network_target_pitch_degrees: float = 0.0
+var _network_target_velocity: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -56,11 +71,11 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _gameplay_input_enabled:
+	if not _is_locally_controlled() or not _gameplay_input_enabled:
 		return
 
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var is_aiming_now: bool = not _is_dead and weapon != null and Input.is_action_pressed("aim")
+	if mouse_look_enabled and event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var is_aiming_now: bool = not _is_dead and weapon != null and Input.is_action_pressed(_action("aim"))
 		var effective_sensitivity: float = mouse_sensitivity
 		if is_aiming_now:
 			effective_sensitivity *= aim_mouse_sensitivity_multiplier
@@ -68,24 +83,32 @@ func _input(event: InputEvent) -> void:
 		_pitch_degrees = clampf(_pitch_degrees - event.relative.y * effective_sensitivity, -88.0, 88.0)
 		camera_pivot.rotation_degrees.x = _pitch_degrees
 
-	if event.is_action_pressed("fire"):
+	if event.is_action_pressed(_action("fire")):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	if event.is_action_pressed("aim"):
+	if event.is_action_pressed(_action("aim")):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _process(delta: float) -> void:
-	_is_aiming = _gameplay_input_enabled and not _is_dead and weapon != null and Input.is_action_pressed("aim")
+	if not _is_locally_controlled():
+		_update_remote_interpolation(delta)
+		return
+
+	_is_aiming = _gameplay_input_enabled and not _is_dead and weapon != null and Input.is_action_pressed(_action("aim"))
 	if weapon != null:
 		weapon.is_aiming = _is_aiming
 	_update_aim_state(delta)
 
 
 func _physics_process(delta: float) -> void:
+	if not _is_locally_controlled():
+		return
+
 	if _is_dead:
 		return
 
+	_handle_gamepad_look(delta)
 	_handle_movement(delta)
 	if _gameplay_input_enabled:
 		_handle_weapon_input()
@@ -103,8 +126,11 @@ func heal(amount: int) -> bool:
 	return health.heal(amount)
 
 
-func apply_damage(amount: int) -> void:
+func apply_damage(amount: int, attacker_player_id: int = 0) -> void:
+	if _is_invulnerable:
+		return
 	var health_before_damage: int = health.current_health
+	last_damage_source_player_id = attacker_player_id
 	health.apply_damage(amount)
 	var damage_taken: int = max(health_before_damage - health.current_health, 0)
 	if damage_taken > 0:
@@ -123,6 +149,13 @@ func set_gameplay_input_enabled(value: bool) -> void:
 		weapon.is_aiming = false
 
 
+func set_local_control_enabled(value: bool) -> void:
+	_local_control_enabled = value
+	if camera != null:
+		camera.current = value
+	set_gameplay_input_enabled(value)
+
+
 func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	global_position = spawn_position
 	rotation.y = yaw_radians
@@ -131,9 +164,68 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	camera_pivot.rotation_degrees.x = 0.0
 	camera.rotation_degrees = Vector3.ZERO
 	_is_dead = false
+	last_damage_source_player_id = 0
 	_air_jumps_used = 0
 	health.respawn()
+	_start_respawn_invulnerability()
 	respawned.emit()
+
+
+func apply_network_state(
+	next_position: Vector3,
+	yaw_radians: float,
+	pitch_degrees: float,
+	next_velocity: Vector3,
+	is_dead_state: bool
+) -> void:
+	_network_target_position = next_position
+	_network_target_yaw = yaw_radians
+	_network_target_pitch_degrees = clampf(pitch_degrees, -88.0, 88.0)
+	_network_target_velocity = next_velocity
+	_has_network_target = true
+
+	if not _is_locally_controlled():
+		if global_position.distance_to(next_position) > network_snap_distance:
+			_apply_network_state_immediately(next_position, yaw_radians, _network_target_pitch_degrees, next_velocity)
+		if _is_dead != is_dead_state:
+			set_dead(is_dead_state)
+		return
+
+	_apply_network_state_immediately(next_position, yaw_radians, _network_target_pitch_degrees, next_velocity)
+	if _is_dead != is_dead_state:
+		set_dead(is_dead_state)
+
+
+func _apply_network_state_immediately(
+	next_position: Vector3,
+	yaw_radians: float,
+	pitch_degrees: float,
+	next_velocity: Vector3
+) -> void:
+	global_position = next_position
+	rotation.y = yaw_radians
+	velocity = next_velocity
+	_pitch_degrees = clampf(pitch_degrees, -88.0, 88.0)
+	if camera_pivot != null:
+		camera_pivot.rotation_degrees.x = _pitch_degrees
+
+
+func apply_network_health(
+	current_health: int,
+	max_health: int,
+	is_dead_state: bool,
+	damage_source_player_id: int = 0
+) -> void:
+	if health == null:
+		return
+
+	health.max_health = maxi(max_health, 1)
+	health.current_health = clampi(current_health, 0, health.max_health)
+	health.is_dead = is_dead_state
+	last_damage_source_player_id = damage_source_player_id
+	if _is_dead != is_dead_state:
+		set_dead(is_dead_state)
+	health.health_changed.emit(health.current_health, health.max_health)
 
 
 func set_dead(value: bool) -> void:
@@ -145,9 +237,19 @@ func set_dead(value: bool) -> void:
 	velocity = Vector3.ZERO
 
 
+func set_body_color(color: Color) -> void:
+	if body_mesh == null:
+		return
+
+	var material: StandardMaterial3D = StandardMaterial3D.new()
+	material.albedo_color = color
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	body_mesh.material_override = material
+
+
 func _handle_movement(delta: float) -> void:
 	var input_direction: Vector2 = _get_move_input()
-	var target_speed: float = run_speed if Input.is_action_pressed("sprint") else walk_speed
+	var target_speed: float = run_speed if Input.is_action_pressed(_action("sprint")) else walk_speed
 	var target_velocity: Vector3 = (global_transform.basis * Vector3(input_direction.x, 0.0, input_direction.y)).normalized() * target_speed
 	var acceleration: float = ground_acceleration if is_on_floor() else air_acceleration
 
@@ -163,7 +265,7 @@ func _handle_movement(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, friction * delta)
 		velocity.z = move_toward(velocity.z, 0.0, friction * delta)
 
-	if Input.is_action_just_pressed("jump") and _can_jump():
+	if Input.is_action_just_pressed(_action("jump")) and _can_jump():
 		if not is_on_floor():
 			_air_jumps_used += 1
 		velocity.y = jump_velocity
@@ -172,7 +274,7 @@ func _handle_movement(delta: float) -> void:
 
 
 func _get_move_input() -> Vector2:
-	return Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	return Input.get_vector(_action("move_left"), _action("move_right"), _action("move_forward"), _action("move_back"))
 
 
 func _can_jump() -> bool:
@@ -182,18 +284,34 @@ func _can_jump() -> bool:
 
 
 func _handle_weapon_input() -> void:
-	if Input.is_action_just_pressed("weapon_1"):
+	if Input.is_action_just_pressed(_action("weapon_1")):
 		_set_active_weapon(0)
-	if Input.is_action_just_pressed("weapon_2"):
+	if Input.is_action_just_pressed(_action("weapon_2")):
 		_set_active_weapon(1)
 
 	if weapon == null:
 		return
 
-	if Input.is_action_pressed("fire"):
+	if Input.is_action_pressed(_action("fire")):
 		weapon.try_fire(camera)
-	if Input.is_action_just_pressed("reload"):
+	if Input.is_action_just_pressed(_action("reload")):
 		weapon.reload()
+
+
+func _handle_gamepad_look(delta: float) -> void:
+	if mouse_look_enabled or not _gameplay_input_enabled:
+		return
+
+	var look_direction: Vector2 = Input.get_vector(_action("look_left"), _action("look_right"), _action("look_up"), _action("look_down"))
+	if look_direction.length_squared() <= 0.0001:
+		return
+
+	var effective_sensitivity: float = gamepad_look_sensitivity
+	if _is_aiming:
+		effective_sensitivity *= aim_mouse_sensitivity_multiplier
+	rotate_y(-look_direction.x * effective_sensitivity * delta)
+	_pitch_degrees = clampf(_pitch_degrees - look_direction.y * effective_sensitivity * 55.0 * delta, -88.0, 88.0)
+	camera_pivot.rotation_degrees.x = _pitch_degrees
 
 
 func _collect_weapons() -> void:
@@ -274,7 +392,46 @@ func _on_health_died() -> void:
 
 
 func _shake_camera(strength: float, duration: float) -> void:
+	if not _is_locally_controlled():
+		return
+
 	var original_position: Vector3 = camera.position
 	var tween: Tween = create_tween()
 	tween.tween_property(camera, "position", original_position + Vector3(randf_range(-strength, strength), randf_range(-strength, strength), 0.0), duration * 0.35)
 	tween.tween_property(camera, "position", original_position, duration * 0.65)
+
+
+func _update_remote_interpolation(delta: float) -> void:
+	if not _has_network_target:
+		return
+
+	var interpolation_weight: float = 1.0 - exp(-network_interpolation_speed * delta)
+	global_position = global_position.lerp(_network_target_position, interpolation_weight)
+	rotation.y = lerp_angle(rotation.y, _network_target_yaw, interpolation_weight)
+	velocity = _network_target_velocity
+	_pitch_degrees = lerpf(_pitch_degrees, _network_target_pitch_degrees, interpolation_weight)
+	if camera_pivot != null:
+		camera_pivot.rotation_degrees.x = _pitch_degrees
+
+
+func _start_respawn_invulnerability() -> void:
+	_is_invulnerable = respawn_invulnerability_time > 0.0
+	if not _is_invulnerable:
+		return
+
+	await get_tree().create_timer(respawn_invulnerability_time).timeout
+	_is_invulnerable = false
+
+
+func _action(base_name: StringName) -> StringName:
+	if input_prefix.is_empty():
+		return base_name
+	return StringName("%s%s" % [input_prefix, base_name])
+
+
+func _is_locally_controlled() -> bool:
+	if not _local_control_enabled:
+		return false
+	if multiplayer.multiplayer_peer == null:
+		return true
+	return is_multiplayer_authority()

@@ -16,6 +16,9 @@ static func ensure_default_actions() -> void:
 	_ensure_key_action("weapon_2", KEY_2)
 	_ensure_key_action("pause", KEY_ESCAPE)
 	_ensure_key_action("debug_draw_toggle", KEY_F3)
+	_ensure_key_action("lan_host", KEY_F6)
+	_ensure_key_action("lan_join", KEY_F7)
+	_ensure_key_action("lan_disconnect", KEY_F8)
 
 
 static func _ensure_key_action(action_name: StringName, physical_keycode: Key) -> void:

@@ -60,7 +60,13 @@ func _perform_hitscan(camera: Camera3D) -> void:
 
 	var damage_target: Object = _find_damage_target(hit.get("collider") as Object)
 	if damage_target != null:
-		damage_target.apply_damage(damage)
+		if damage_target is PlayerController:
+			var victim: PlayerController = damage_target as PlayerController
+			var attacker_player_id: int = _get_owner_player_id()
+			if not _request_network_player_damage(victim.player_id, damage, attacker_player_id):
+				victim.apply_damage(damage, attacker_player_id)
+		else:
+			damage_target.apply_damage(damage)
 
 	var impact_position: Vector3 = hit.get("position", Vector3.ZERO)
 	_debug_draw_shot_ray(origin, end_position, impact_position, true)
@@ -146,6 +152,20 @@ func _get_owner_body() -> CollisionObject3D:
 			return current
 		current = current.get_parent()
 	return null
+
+
+func _get_owner_player_id() -> int:
+	var owner_body: CollisionObject3D = _get_owner_body()
+	if owner_body is PlayerController:
+		return (owner_body as PlayerController).player_id
+	return 0
+
+
+func _request_network_player_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> bool:
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null or not scene_root.has_method("request_network_damage"):
+		return false
+	return bool(scene_root.call("request_network_damage", victim_player_id, amount, attacker_player_id))
 
 
 func _find_damage_target(collider: Object) -> Object:
