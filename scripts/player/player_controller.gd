@@ -84,12 +84,23 @@ signal local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2)
 @export_range(0.0, 0.2) var weapon_jump_drop: float = 0.065
 @export_range(0.0, 0.2) var weapon_landing_kick: float = 0.08
 @export var hide_body_for_local_player: bool = true
+@export var hide_third_person_weapon_for_local_player: bool = true
+@export_range(0.0, 0.18) var body_breath_amount: float = 0.025
+@export_range(0.1, 3.0) var body_breath_frequency: float = 0.7
+@export_range(0.0, 0.2) var body_walk_bob_amount: float = 0.055
+@export_range(0.0, 12.0) var body_walk_roll_degrees: float = 3.5
+@export_range(0.0, 1.0) var third_person_aim_offset: float = 0.16
+@export_range(0.0, 45.0) var leg_swing_degrees: float = 24.0
+@export_range(0.0, 45.0) var leg_jump_tuck_degrees: float = 18.0
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/PlayerCamera
 @onready var health: PlayerHealth = $PlayerHealth
-@onready var body_mesh: MeshInstance3D = $BodyMesh
+@onready var body_mesh: Node3D = $BodyMesh
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
+@onready var body_visual: Node3D = $BodyMesh/AmongUsPlayerModel
+@onready var third_person_weapon_rig: Node3D = $BodyMesh/ThirdPersonWeaponRig
+@onready var character_skeleton: Skeleton3D = $BodyMesh/AmongUsPlayerModel/Model/Sketchfab_model/root/GLTF_SceneRootNode/Armature_50/GLTF_created_2/Skeleton3D
 
 var weapon: WeaponBase
 
@@ -112,6 +123,8 @@ var _network_target_yaw: float = 0.0
 var _network_target_pitch_degrees: float = 0.0
 var _network_target_velocity: Vector3 = Vector3.ZERO
 var _network_target_is_crouching: bool = false
+var _network_target_is_aiming: bool = false
+var _network_target_active_weapon_index: int = 0
 var _is_crouching: bool = false
 var _crouch_blend: float = 0.0
 var _standing_collision_height: float = 0.0
@@ -147,6 +160,12 @@ var _previous_yaw: float = 0.0
 var _previous_pitch: float = 0.0
 var _weapon_velocity_sway: Vector3 = Vector3.ZERO
 var _last_view_delta: Vector2 = Vector2.ZERO
+var _body_motion_time: float = 0.0
+var _body_visual_default_transform: Transform3D = Transform3D.IDENTITY
+var _third_person_weapon_default_transform: Transform3D = Transform3D.IDENTITY
+var _third_person_weapon_models: Array[Node3D] = []
+var _limb_bone_indices: Dictionary = {}
+var _limb_rest_rotations: Dictionary = {}
 
 
 func _ready() -> void:
@@ -154,9 +173,13 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.fov = fov
 	_cache_standing_pose()
+	_cache_third_person_weapon_rig()
+	_cache_limb_bones()
 	_collect_weapons()
 	_set_active_weapon(0)
 	_update_body_visibility()
+	_update_first_person_weapon_visibility()
+	_update_third_person_weapon_visibility()
 	health.died.connect(_on_health_died)
 	_previous_yaw = rotation.y
 	_previous_pitch = _pitch_degrees
@@ -188,6 +211,7 @@ func _process(delta: float) -> void:
 	if not _is_locally_controlled():
 		_update_remote_interpolation(delta)
 		_update_crouch_visual(delta)
+		_update_third_person_visual(delta)
 		return
 
 	_is_aiming = _gameplay_input_enabled and not _is_dead and weapon != null and Input.is_action_pressed(_action("aim"))
@@ -196,6 +220,7 @@ func _process(delta: float) -> void:
 	_update_aim_state(delta)
 	_update_crouch_visual(delta)
 	_update_camera_motion(delta)
+	_update_third_person_visual(delta)
 
 
 func _physics_process(delta: float) -> void:
@@ -228,6 +253,14 @@ func is_crouching() -> bool:
 	return _is_crouching
 
 
+func is_aiming() -> bool:
+	return _is_aiming
+
+
+func get_active_weapon_index() -> int:
+	return _active_weapon_index
+
+
 func apply_damage(amount: int, attacker_player_id: int = 0) -> void:
 	if _is_invulnerable:
 		return
@@ -256,6 +289,8 @@ func set_local_control_enabled(value: bool) -> void:
 	if camera != null:
 		camera.current = value
 	_update_body_visibility()
+	_update_first_person_weapon_visibility()
+	_update_third_person_weapon_visibility()
 	set_gameplay_input_enabled(value)
 
 
@@ -366,6 +401,19 @@ func apply_network_health(
 	health.health_changed.emit(health.current_health, health.max_health)
 
 
+func apply_network_combat_state(active_weapon_index: int, is_aiming_state: bool) -> void:
+	_network_target_active_weapon_index = clampi(active_weapon_index, 0, maxi(_weapons.size() - 1, 0))
+	_network_target_is_aiming = is_aiming_state and not _is_dead
+	if _is_locally_controlled():
+		return
+
+	_set_active_weapon(_network_target_active_weapon_index)
+	_is_aiming = _network_target_is_aiming
+	if weapon != null:
+		weapon.is_aiming = _is_aiming
+	_update_third_person_weapon_visibility()
+
+
 func set_dead(value: bool) -> void:
 	_is_dead = value
 	_is_aiming = false
@@ -373,6 +421,7 @@ func set_dead(value: bool) -> void:
 	if weapon != null:
 		weapon.is_aiming = false
 	velocity = Vector3.ZERO
+	_update_third_person_weapon_visibility()
 
 
 func set_body_color(color: Color) -> void:
@@ -382,7 +431,7 @@ func set_body_color(color: Color) -> void:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	body_mesh.material_override = material
+	_apply_body_material(body_visual if body_visual != null else body_mesh, material)
 
 
 func _handle_movement(delta: float) -> void:
@@ -733,6 +782,18 @@ func _handle_weapon_input() -> void:
 		_set_active_weapon(0)
 	if Input.is_action_just_pressed(_action("weapon_2")):
 		_set_active_weapon(1)
+	if Input.is_action_just_pressed(_action("weapon_3")):
+		_set_active_weapon(2)
+	if Input.is_action_just_pressed(_action("weapon_4")):
+		_set_active_weapon(3)
+	if Input.is_action_just_pressed(_action("weapon_5")):
+		_set_active_weapon(4)
+
+	if _weapons.size() > 1:
+		if Input.is_action_just_pressed(_action("weapon_next")):
+			_set_active_weapon((_active_weapon_index + 1) % _weapons.size())
+		if Input.is_action_just_pressed(_action("weapon_prev")):
+			_set_active_weapon((_active_weapon_index - 1 + _weapons.size()) % _weapons.size())
 
 	if weapon == null:
 		return
@@ -769,6 +830,43 @@ func _collect_weapons() -> void:
 			_weapon_default_transforms[child] = child.transform
 
 
+func _cache_third_person_weapon_rig() -> void:
+	if body_visual != null:
+		_body_visual_default_transform = body_visual.transform
+
+	_third_person_weapon_models.clear()
+	if third_person_weapon_rig == null:
+		return
+
+	_third_person_weapon_default_transform = third_person_weapon_rig.transform
+	for child in third_person_weapon_rig.get_children():
+		if child is Node3D:
+			_third_person_weapon_models.append(child)
+
+
+func _cache_limb_bones() -> void:
+	_limb_bone_indices.clear()
+	_limb_rest_rotations.clear()
+	if character_skeleton == null:
+		return
+
+	var bone_names: Dictionary = {
+		"left_upper": "Bone.003.L_41",
+		"left_lower": "Bone.004.L_40",
+		"left_foot": "Bone.005.L_39",
+		"right_upper": "Bone.003.R_44",
+		"right_lower": "Bone.004.R_43",
+		"right_foot": "Bone.005.R_42",
+	}
+
+	for limb_name in bone_names.keys():
+		var bone_index: int = character_skeleton.find_bone(String(bone_names[limb_name]))
+		if bone_index < 0:
+			continue
+		_limb_bone_indices[limb_name] = bone_index
+		_limb_rest_rotations[limb_name] = character_skeleton.get_bone_pose_rotation(bone_index)
+
+
 func _cache_standing_pose() -> void:
 	if camera_pivot != null:
 		_standing_camera_pivot_position = camera_pivot.position
@@ -789,6 +887,124 @@ func _update_body_visibility() -> void:
 	if body_mesh == null:
 		return
 	body_mesh.visible = not (hide_body_for_local_player and _is_locally_controlled())
+	_update_third_person_weapon_visibility()
+
+
+func _update_first_person_weapon_visibility() -> void:
+	for weapon_index in range(_weapons.size()):
+		_weapons[weapon_index].visible = _is_locally_controlled() and weapon_index == _active_weapon_index
+
+
+func _update_third_person_weapon_visibility() -> void:
+	if third_person_weapon_rig == null:
+		return
+
+	var should_show_rig: bool = not _is_dead
+	if hide_third_person_weapon_for_local_player and _is_locally_controlled():
+		should_show_rig = false
+	third_person_weapon_rig.visible = should_show_rig
+
+	for weapon_index in range(_third_person_weapon_models.size()):
+		_third_person_weapon_models[weapon_index].visible = should_show_rig and weapon_index == _active_weapon_index
+
+
+func _update_third_person_visual(delta: float) -> void:
+	var horizontal_speed: float = Vector2(velocity.x, velocity.z).length()
+	var speed_ratio: float = clampf(horizontal_speed / maxf(run_speed, 0.001), 0.0, 1.0)
+	var stride_frequency: float = lerpf(body_breath_frequency, 6.0, speed_ratio)
+	_body_motion_time += delta * stride_frequency
+
+	var breath_wave: float = sin(_body_motion_time * TAU)
+	var walk_wave: float = sin(_body_motion_time * TAU * 1.35)
+	var lateral_wave: float = cos(_body_motion_time * TAU * 0.675)
+	var body_offset := Vector3(0.0, breath_wave * body_breath_amount, 0.0)
+	body_offset.y += absf(walk_wave) * body_walk_bob_amount * speed_ratio
+
+	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+	var strafe_ratio: float = clampf(local_velocity.x / maxf(run_speed, 0.001), -1.0, 1.0)
+	var forward_ratio: float = clampf(-local_velocity.z / maxf(run_speed, 0.001), -1.0, 1.0)
+	var body_rotation := Vector3(
+		deg_to_rad(forward_ratio * body_walk_roll_degrees * 0.35 * speed_ratio),
+		0.0,
+		deg_to_rad((-strafe_ratio * body_walk_roll_degrees) + lateral_wave * body_walk_roll_degrees * 0.18 * speed_ratio)
+	)
+	_update_limb_animation(speed_ratio, walk_wave)
+
+	if body_visual != null:
+		body_visual.transform = Transform3D(
+			_body_visual_default_transform.basis * Basis.from_euler(body_rotation),
+			_body_visual_default_transform.origin + body_offset
+		)
+
+	if third_person_weapon_rig == null:
+		return
+
+	var pitch_radians: float = deg_to_rad(clampf(_pitch_degrees, -55.0, 55.0))
+	var aim_blend: float = 1.0 if _is_aiming else 0.0
+	var rig_offset := Vector3(
+		lerpf(0.0, -third_person_aim_offset * 0.25, aim_blend),
+		body_offset.y * 0.35 + lerpf(0.0, third_person_aim_offset * 0.15, aim_blend),
+		lerpf(0.0, -third_person_aim_offset, aim_blend)
+	)
+	var rig_sway := Vector3(
+		pitch_radians * 0.65,
+		deg_to_rad(strafe_ratio * 4.0 * speed_ratio),
+		deg_to_rad(-strafe_ratio * 5.0 * speed_ratio)
+	)
+	third_person_weapon_rig.transform = Transform3D(
+		_third_person_weapon_default_transform.basis * Basis.from_euler(rig_sway),
+		_third_person_weapon_default_transform.origin + rig_offset
+	)
+
+
+func _update_limb_animation(speed_ratio: float, walk_wave: float) -> void:
+	if character_skeleton == null or _limb_bone_indices.is_empty():
+		return
+
+	var jump_tuck: float = clampf(absf(velocity.y) / maxf(jump_velocity, 0.001), 0.0, 1.0)
+	if is_on_floor():
+		jump_tuck = 0.0
+	var swing: float = deg_to_rad(leg_swing_degrees) * speed_ratio
+	var tuck: float = deg_to_rad(leg_jump_tuck_degrees) * jump_tuck
+	var left_angle: float = walk_wave * swing + tuck
+	var right_angle: float = -walk_wave * swing + tuck
+
+	_apply_limb_pose("left_upper", Vector3.RIGHT, left_angle)
+	_apply_limb_pose("right_upper", Vector3.RIGHT, right_angle)
+	_apply_limb_pose("left_lower", Vector3.RIGHT, -left_angle * 0.45 - tuck * 0.25)
+	_apply_limb_pose("right_lower", Vector3.RIGHT, -right_angle * 0.45 - tuck * 0.25)
+	_apply_limb_pose("left_foot", Vector3.RIGHT, -left_angle * 0.25)
+	_apply_limb_pose("right_foot", Vector3.RIGHT, -right_angle * 0.25)
+
+
+func _apply_limb_pose(limb_name: String, axis: Vector3, angle: float) -> void:
+	if not _limb_bone_indices.has(limb_name) or not _limb_rest_rotations.has(limb_name):
+		return
+
+	var bone_index: int = int(_limb_bone_indices[limb_name])
+	var rest_rotation: Quaternion = _limb_rest_rotations[limb_name] as Quaternion
+	character_skeleton.set_bone_pose_rotation(bone_index, rest_rotation * Quaternion(axis, angle))
+
+
+func _apply_body_material(node: Node, material: Material) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		if _should_tint_body_mesh(mesh_instance):
+			mesh_instance.material_override = material
+	for child in node.get_children():
+		_apply_body_material(child, material)
+
+
+func _should_tint_body_mesh(mesh_instance: MeshInstance3D) -> bool:
+	var mesh: Mesh = mesh_instance.mesh
+	if mesh == null:
+		return true
+
+	for surface_index in range(mesh.get_surface_count()):
+		var surface_material: Material = mesh.surface_get_material(surface_index)
+		if surface_material != null and surface_material.resource_name.begins_with("Material"):
+			return false
+	return true
 
 
 func _set_active_weapon(index: int) -> void:
@@ -810,8 +1026,8 @@ func _set_active_weapon(index: int) -> void:
 	_previous_camera_yaw = rotation.y
 	_active_weapon_index = index
 	weapon = _weapons[index]
-	for weapon_index in range(_weapons.size()):
-		_weapons[weapon_index].visible = weapon_index == _active_weapon_index
+	_update_first_person_weapon_visibility()
+	_update_third_person_weapon_visibility()
 
 	weapon.fired.connect(_on_weapon_fired)
 	active_weapon_changed.emit(weapon)
@@ -891,6 +1107,16 @@ func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Tran
 
 	var motion_basis: Basis = base_transform.basis * Basis.from_euler(_weapon_sway_rotation)
 	var motion_origin: Vector3 = base_transform.origin + base_transform.basis * _weapon_sway_position
+
+	if weapon != null:
+		motion_origin += base_transform.basis * weapon.reload_anim_position
+		var reload_rotation_radians := Vector3(
+			deg_to_rad(weapon.reload_anim_rotation.x),
+			deg_to_rad(weapon.reload_anim_rotation.y),
+			deg_to_rad(weapon.reload_anim_rotation.z)
+		)
+		motion_basis = motion_basis * Basis.from_euler(reload_rotation_radians)
+
 	return Transform3D(motion_basis, motion_origin)
 
 

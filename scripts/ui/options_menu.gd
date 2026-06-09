@@ -38,6 +38,17 @@ func _ready() -> void:
 	visible = false
 	_populate_options()
 	_connect_controls()
+	_configure_dev_buttons()
+
+
+func _configure_dev_buttons() -> void:
+	refill_ammo_button.icon = null
+	heal_player_button.icon = HudIcons.HEALTH
+	damage_player_button.icon = HudIcons.WEAPON
+	respawn_player_button.icon = HudIcons.SCORE
+	heal_player_button.expand_icon = true
+	damage_player_button.expand_icon = true
+	respawn_player_button.expand_icon = true
 
 
 func bind_context(
@@ -91,7 +102,7 @@ func _populate_options() -> void:
 	frame_limit_option.add_item("120 FPS", 120)
 
 	time_preset_option.clear()
-	time_preset_option.add_item("Manana", PSXVisualDirector.TimeOfDayPreset.MORNING)
+	time_preset_option.add_item("Mañana", PSXVisualDirector.TimeOfDayPreset.MORNING)
 	time_preset_option.add_item("Tarde", PSXVisualDirector.TimeOfDayPreset.AFTERNOON)
 	time_preset_option.add_item("Noche", PSXVisualDirector.TimeOfDayPreset.NIGHT)
 

@@ -8,24 +8,33 @@ extends Control
 @export_range(0.0, 12.0) var hologram_max_offset: float = 5.0
 
 @onready var stats: VBoxContainer = get_node_or_null("Stats") as VBoxContainer
-@onready var health_label: Label = get_node_or_null("Stats/HealthLabel") as Label
-@onready var player_label: Label = get_node_or_null("Stats/PlayerLabel") as Label
-@onready var weapon_label: Label = get_node_or_null("Stats/WeaponLabel") as Label
-@onready var ammo_label: Label = get_node_or_null("Stats/AmmoLabel") as Label
-@onready var score_label: Label = get_node_or_null("Stats/ScoreLabel") as Label
-@onready var match_label: Label = get_node_or_null("Stats/MatchLabel") as Label
-@onready var network_label: Label = get_node_or_null("Stats/NetworkLabel") as Label
-@onready var ping_label: Label = get_node_or_null("Stats/PingLabel") as Label
-@onready var fps_label: Label = get_node_or_null("Stats/FpsLabel") as Label
-@onready var position_label: Label = get_node_or_null("Stats/PositionLabel") as Label
-@onready var speed_label: Label = get_node_or_null("Stats/SpeedLabel") as Label
+@onready var health_icon: TextureRect = get_node_or_null("Stats/HealthRow/Icon") as TextureRect
+@onready var health_label: Label = get_node_or_null("Stats/HealthRow/HealthLabel") as Label
+@onready var weapon_row: HBoxContainer = get_node_or_null("Stats/WeaponRow") as HBoxContainer
+@onready var player_label: Label = get_node_or_null("Stats/PlayerRow/PlayerLabel") as Label
+@onready var weapon_label: Label = get_node_or_null("Stats/WeaponRow/WeaponLabel") as Label
+@onready var ammo_label: Label = get_node_or_null("Stats/AmmoRow/AmmoLabel") as Label
+@onready var score_row: HBoxContainer = get_node_or_null("Stats/ScoreRow") as HBoxContainer
+@onready var score_label: Label = get_node_or_null("Stats/ScoreRow/ScoreLabel") as Label
+@onready var match_row: HBoxContainer = get_node_or_null("Stats/MatchRow") as HBoxContainer
+@onready var match_label: Label = get_node_or_null("Stats/MatchRow/MatchLabel") as Label
+@onready var network_row: HBoxContainer = get_node_or_null("Stats/NetworkRow") as HBoxContainer
+@onready var network_label: Label = get_node_or_null("Stats/NetworkRow/NetworkLabel") as Label
+@onready var ping_label: Label = get_node_or_null("Stats/PingRow/PingLabel") as Label
+@onready var fps_row: HBoxContainer = get_node_or_null("Stats/FpsRow") as HBoxContainer
+@onready var fps_label: Label = get_node_or_null("Stats/FpsRow/FpsLabel") as Label
+@onready var position_row: HBoxContainer = get_node_or_null("Stats/PositionRow") as HBoxContainer
+@onready var position_label: Label = get_node_or_null("Stats/PositionRow/PositionLabel") as Label
+@onready var speed_row: HBoxContainer = get_node_or_null("Stats/SpeedRow") as HBoxContainer
+@onready var speed_label: Label = get_node_or_null("Stats/SpeedRow/SpeedLabel") as Label
 @onready var crosshair: Control = get_node_or_null("Crosshair") as Control
 @onready var aim_dot: ColorRect = get_node_or_null("AimDot") as ColorRect
 
 const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
-const STATS_DEFAULT_SIZE: Vector2 = Vector2(200.0, 100.0)
+const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
 const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(104.0, 72.0)
-const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(200.0, 100.0)
+const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(220.0, 100.0)
+const HEALTH_WARN_RATIO: float = 0.3
 
 var _player: PlayerController
 var _visual_director: PSXVisualDirector
@@ -36,7 +45,7 @@ var _ammo_in_mag: int = 0
 var _reserve_ammo: int = 0
 var _debug_position: Vector3 = Vector3.ZERO
 var _debug_speed: float = 0.0
-var _debug_visible: bool = true
+var _debug_visible: bool = false
 var _crosshair_enabled: bool = true
 var _match_manager: MatchManager
 var _local_player_id: int = 0
@@ -115,16 +124,16 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 		_match_manager.match_finished.connect(_on_match_finished)
 	_refresh_score_label()
 	if match_label != null:
-		match_label.text = "FIRST TO %d" % _match_manager.score_limit
+		match_label.text = "FIRST TO %d KILLS" % _match_manager.score_limit
 
 
 func _process(delta: float) -> void:
 	if fps_label != null:
-		fps_label.text = "DEBUG FPS: %d" % Engine.get_frames_per_second()
+		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
 	if position_label != null:
-		position_label.text = "DEBUG POS: %.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
+		position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
 	if speed_label != null:
-		speed_label.text = "DEBUG SPEED: %.1f" % _debug_speed
+		speed_label.text = "%.1f u/s" % _debug_speed
 	var is_aiming: bool = _active_weapon != null and _active_weapon.is_aiming
 	if crosshair != null:
 		crosshair.visible = _crosshair_enabled
@@ -137,12 +146,20 @@ func _process(delta: float) -> void:
 
 func set_debug_visible(value: bool) -> void:
 	_debug_visible = value
-	if fps_label != null:
-		fps_label.visible = value
-	if position_label != null:
-		position_label.visible = value
-	if speed_label != null:
-		speed_label.visible = value
+	if weapon_row != null:
+		weapon_row.visible = value
+	if score_row != null:
+		score_row.visible = value
+	if match_row != null:
+		match_row.visible = value
+	if network_row != null:
+		network_row.visible = value
+	if fps_row != null:
+		fps_row.visible = value
+	if position_row != null:
+		position_row.visible = value
+	if speed_row != null:
+		speed_row.visible = value
 
 
 func is_debug_visible() -> bool:
@@ -165,7 +182,7 @@ func is_crosshair_enabled() -> bool:
 func set_network_status(status: String) -> void:
 	if network_label == null:
 		return
-	network_label.text = "NET: %s" % status
+	network_label.text = status.to_upper()
 
 
 func set_network_stats(status: String, ping_ms: int, peer_count: int) -> void:
@@ -174,21 +191,24 @@ func set_network_stats(status: String, ping_ms: int, peer_count: int) -> void:
 		return
 
 	var ping_text: String = "LOCAL" if ping_ms < 0 else "%d MS" % ping_ms
-	ping_label.text = "PING: %s  PEERS: %d" % [ping_text, peer_count]
+	var display_players: int = maxi(peer_count, 1)
+	var player_text: String = "JUGADOR" if display_players == 1 else "JUGADORES"
+	ping_label.text = "%s  ·  %d %s" % [ping_text, display_players, player_text]
 
 
 func _on_health_changed(current_health: int, max_health: int) -> void:
 	_health = current_health
 	_max_health = max_health
 	if health_label != null:
-		health_label.text = "HEALTH: %d / %d" % [_health, _max_health]
+		health_label.text = "%d / %d" % [_health, _max_health]
+	_update_health_icon_tint()
 
 
 func _on_ammo_changed(ammo_in_mag: int, reserve_ammo: int) -> void:
 	_ammo_in_mag = ammo_in_mag
 	_reserve_ammo = reserve_ammo
 	if ammo_label != null:
-		ammo_label.text = "AMMO: %d / %d" % [_ammo_in_mag, _reserve_ammo]
+		ammo_label.text = "%d / %d" % [_ammo_in_mag, _reserve_ammo]
 
 
 func _on_weapon_state_changed(state: String) -> void:
@@ -196,7 +216,7 @@ func _on_weapon_state_changed(state: String) -> void:
 	if _active_weapon != null:
 		weapon_name = _active_weapon.weapon_name
 	if weapon_label != null:
-		weapon_label.text = "WEAPON: %s (%s)" % [weapon_name, state]
+		weapon_label.text = "%s · %s" % [weapon_name, state]
 
 
 func _on_active_weapon_changed(next_weapon: WeaponBase) -> void:
@@ -235,7 +255,7 @@ func _refresh_score_label() -> void:
 	if score_label == null or _match_manager == null:
 		return
 
-	score_label.text = "SCORE: %s" % _match_manager.format_score_line()
+	score_label.text = _match_manager.format_score_line()
 
 
 func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
@@ -325,23 +345,36 @@ func _ensure_optional_labels() -> void:
 		return
 
 	if player_label == null:
-		player_label = Label.new()
-		player_label.name = "PlayerLabel"
-		stats.add_child(player_label)
-		stats.move_child(player_label, 0)
+		var player_row_data: Dictionary = HudIcons.make_stat_row("PlayerRow", "PlayerLabel", HudIcons.PLAYER)
+		stats.add_child(player_row_data["row"])
+		stats.move_child(player_row_data["row"], 0)
+		player_label = player_row_data["label"] as Label
 	if score_label == null:
-		score_label = Label.new()
-		score_label.name = "ScoreLabel"
-		stats.add_child(score_label)
+		var score_row_data: Dictionary = HudIcons.make_stat_row("ScoreRow", "ScoreLabel", HudIcons.SCORE)
+		score_row = score_row_data["row"] as HBoxContainer
+		stats.add_child(score_row)
+		score_label = score_row_data["label"] as Label
 	if match_label == null:
-		match_label = Label.new()
-		match_label.name = "MatchLabel"
-		stats.add_child(match_label)
+		var match_row_data: Dictionary = HudIcons.make_stat_row("MatchRow", "MatchLabel", HudIcons.MATCH)
+		match_row = match_row_data["row"] as HBoxContainer
+		stats.add_child(match_row)
+		match_label = match_row_data["label"] as Label
 	if network_label == null:
-		network_label = Label.new()
-		network_label.name = "NetworkLabel"
-		stats.add_child(network_label)
+		var network_row_data: Dictionary = HudIcons.make_stat_row("NetworkRow", "NetworkLabel", HudIcons.NETWORK)
+		network_row = network_row_data["row"] as HBoxContainer
+		stats.add_child(network_row)
+		network_label = network_row_data["label"] as Label
 	if ping_label == null:
-		ping_label = Label.new()
-		ping_label.name = "PingLabel"
-		stats.add_child(ping_label)
+		var ping_row_data: Dictionary = HudIcons.make_stat_row("PingRow", "PingLabel", HudIcons.PING)
+		stats.add_child(ping_row_data["row"])
+		ping_label = ping_row_data["label"] as Label
+
+
+func _update_health_icon_tint() -> void:
+	if health_icon == null or _max_health <= 0:
+		return
+
+	var health_ratio: float = float(_health) / float(_max_health)
+	health_icon.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TINT
+	if health_label != null:
+		health_label.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TINT

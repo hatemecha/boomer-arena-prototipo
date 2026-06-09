@@ -20,13 +20,18 @@ signal fired(weapon: WeaponBase)
 @export var no_ammo_sound: AudioStream
 @export var aim_sight_path: NodePath = NodePath("WeaponModel/AimRearSight")
 @export var aim_pose_path: NodePath = NodePath()
+@export_range(0.0, 0.5) var reload_drop_distance: float = 0.18
+@export_range(0.0, 60.0) var reload_tilt_degrees: float = 22.0
 
 var ammo_in_mag: int = mag_size
 var state: String = "Idle"
 var is_aiming: bool = false
+var reload_anim_position: Vector3 = Vector3.ZERO
+var reload_anim_rotation: Vector3 = Vector3.ZERO
 var _time_since_last_shot: float = 999.0
 var _is_reloading: bool = false
 var _audio_player: AudioStreamPlayer3D
+var _reload_tween: Tween
 
 
 func _ready() -> void:
@@ -72,6 +77,7 @@ func reload() -> bool:
 	_is_reloading = true
 	_set_state("Reloading")
 	_play_sound(reload_sound)
+	_animate_reload()
 	await get_tree().create_timer(reload_time).timeout
 
 	var needed_ammo: int = mag_size - ammo_in_mag
@@ -82,6 +88,31 @@ func reload() -> bool:
 	ammo_changed.emit(ammo_in_mag, reserve_ammo)
 	_set_state("Idle")
 	return true
+
+
+func _animate_reload() -> void:
+	if _reload_tween != null and _reload_tween.is_valid():
+		_reload_tween.kill()
+	reload_anim_position = Vector3.ZERO
+	reload_anim_rotation = Vector3.ZERO
+
+	var drop_duration: float = reload_time * 0.25
+	var hold_duration: float = reload_time * 0.50
+	var raise_duration: float = reload_time * 0.25
+
+	_reload_tween = create_tween()
+	_reload_tween.set_ease(Tween.EASE_IN_OUT)
+	_reload_tween.set_trans(Tween.TRANS_CUBIC)
+
+	_reload_tween.tween_property(self, "reload_anim_position",
+			Vector3(0.0, -reload_drop_distance, 0.06), drop_duration)
+	_reload_tween.parallel().tween_property(self, "reload_anim_rotation",
+			Vector3(reload_tilt_degrees, 0.0, 5.0), drop_duration)
+	_reload_tween.tween_interval(hold_duration)
+	_reload_tween.tween_property(self, "reload_anim_position",
+			Vector3.ZERO, raise_duration)
+	_reload_tween.parallel().tween_property(self, "reload_anim_rotation",
+			Vector3.ZERO, raise_duration)
 
 
 func has_aim_pose() -> bool:

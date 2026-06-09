@@ -30,7 +30,7 @@ signal lens_preset_changed(preset: LensPreset)
 @export_range(0.0, 0.35, 0.001) var fisheye_strength: float = 0.018
 @export_range(0.0, 1.0, 0.01) var fisheye_center_flatness: float = 0.45
 @export_range(0.9, 1.2, 0.001) var lens_zoom_compensation: float = 1.015
-@export_range(0.0, 0.02, 0.00025) var chromatic_aberration_strength: float = 0.00045
+@export_range(0.0, 0.02, 0.00025) var chromatic_aberration_strength: float = 0.0024
 @export_range(0.0, 1.2, 0.01) var chromatic_edge_start: float = 0.70
 @export_range(0.0, 1.0, 0.005) var vignette_strength: float = 0.035
 @export_range(0.4, 1.8, 0.01) var vignette_radius: float = 1.35
@@ -255,8 +255,8 @@ func _apply_lens_preset_values(preset: LensPreset) -> void:
 			fisheye_strength = 0.018
 			fisheye_center_flatness = 0.45
 			lens_zoom_compensation = 1.015
-			chromatic_aberration_strength = 0.00045
-			chromatic_edge_start = 0.70
+			chromatic_aberration_strength = 0.0006
+			chromatic_edge_start = 0.65
 			vignette_strength = 0.035
 			vignette_radius = 1.35
 			vignette_softness = 0.35
@@ -271,8 +271,8 @@ func _apply_lens_preset_values(preset: LensPreset) -> void:
 			fisheye_strength = 0.075
 			fisheye_center_flatness = 0.35
 			lens_zoom_compensation = 1.035
-			chromatic_aberration_strength = 0.0018
-			chromatic_edge_start = 0.50
+			chromatic_aberration_strength = 0.0024
+			chromatic_edge_start = 0.45
 			vignette_strength = 0.08
 			vignette_radius = 1.12
 			vignette_softness = 0.38
@@ -287,8 +287,8 @@ func _apply_lens_preset_values(preset: LensPreset) -> void:
 			fisheye_strength = 0.16
 			fisheye_center_flatness = 0.25
 			lens_zoom_compensation = 1.06
-			chromatic_aberration_strength = 0.004
-			chromatic_edge_start = 0.35
+			chromatic_aberration_strength = 0.0053
+			chromatic_edge_start = 0.30
 			vignette_strength = 0.11
 			vignette_radius = 0.96
 			vignette_softness = 0.35

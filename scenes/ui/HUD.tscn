@@ -1,7 +1,12 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
 [ext_resource type="Script" path="res://scripts/ui/circular_crosshair.gd" id="2_crosshair"]
+[ext_resource type="Texture2D" path="res://tool_icons_16px/circle.png" id="3_health"]
+[ext_resource type="Texture2D" path="res://tool_icons_16px/mouse_left.png" id="4_weapon"]
+[ext_resource type="Texture2D" path="res://tool_icons_16px/stopwatch.png" id="5_fps"]
+[ext_resource type="Texture2D" path="res://tool_icons_16px/grid.png" id="6_position"]
+[ext_resource type="Texture2D" path="res://tool_icons_16px/walk.png" id="7_speed"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -18,33 +23,120 @@ layout_mode = 1
 anchors_preset = 0
 offset_left = 54.0
 offset_top = 42.0
-offset_right = 254.0
+offset_right = 286.0
 offset_bottom = 142.0
+theme_override_constants/separation = 4
 scale = Vector2(0.78, 0.78)
 
-[node name="HealthLabel" type="Label" parent="Stats"]
+[node name="HealthRow" type="HBoxContainer" parent="Stats"]
 layout_mode = 2
-text = "HEALTH: 100 / 100"
+theme_override_constants/separation = 6
 
-[node name="WeaponLabel" type="Label" parent="Stats"]
+[node name="Icon" type="TextureRect" parent="Stats/HealthRow"]
+custom_minimum_size = Vector2(16, 16)
 layout_mode = 2
-text = "WEAPON: SMG"
+mouse_filter = 2
+texture = ExtResource("3_health")
+texture_filter = 0
+expand_mode = 4
+stretch_mode = 5
+modulate = Color(0.92, 0.9, 0.86, 1)
 
-[node name="AmmoLabel" type="Label" parent="Stats"]
+[node name="HealthLabel" type="Label" parent="Stats/HealthRow"]
 layout_mode = 2
-text = "AMMO: 24 / 96"
+text = "100 / 100"
 
-[node name="FpsLabel" type="Label" parent="Stats"]
+[node name="WeaponRow" type="HBoxContainer" parent="Stats"]
 layout_mode = 2
-text = "FPS: 0"
+theme_override_constants/separation = 6
 
-[node name="PositionLabel" type="Label" parent="Stats"]
+[node name="Icon" type="TextureRect" parent="Stats/WeaponRow"]
+custom_minimum_size = Vector2(16, 16)
 layout_mode = 2
-text = "POS: 0, 0, 0"
+mouse_filter = 2
+texture = ExtResource("4_weapon")
+texture_filter = 0
+expand_mode = 4
+stretch_mode = 5
+modulate = Color(0.92, 0.9, 0.86, 1)
 
-[node name="SpeedLabel" type="Label" parent="Stats"]
+[node name="WeaponLabel" type="Label" parent="Stats/WeaponRow"]
 layout_mode = 2
-text = "SPEED: 0"
+text = "SMG"
+
+[node name="AmmoRow" type="HBoxContainer" parent="Stats"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Tag" type="Label" parent="Stats/AmmoRow"]
+custom_minimum_size = Vector2(42, 16)
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "AMMO"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
+
+[node name="AmmoLabel" type="Label" parent="Stats/AmmoRow"]
+layout_mode = 2
+text = "24 / 96"
+
+[node name="FpsRow" type="HBoxContainer" parent="Stats"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Stats/FpsRow"]
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("5_fps")
+texture_filter = 0
+expand_mode = 4
+stretch_mode = 5
+modulate = Color(0.92, 0.9, 0.86, 1)
+
+[node name="FpsLabel" type="Label" parent="Stats/FpsRow"]
+layout_mode = 2
+text = "0"
+
+[node name="PositionRow" type="HBoxContainer" parent="Stats"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Stats/PositionRow"]
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("6_position")
+texture_filter = 0
+expand_mode = 4
+stretch_mode = 5
+modulate = Color(0.92, 0.9, 0.86, 1)
+
+[node name="PositionLabel" type="Label" parent="Stats/PositionRow"]
+layout_mode = 2
+text = "0, 0, 0"
+
+[node name="SpeedRow" type="HBoxContainer" parent="Stats"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Stats/SpeedRow"]
+custom_minimum_size = Vector2(16, 16)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("7_speed")
+texture_filter = 0
+expand_mode = 4
+stretch_mode = 5
+modulate = Color(0.92, 0.9, 0.86, 1)
+
+[node name="SpeedLabel" type="Label" parent="Stats/SpeedRow"]
+layout_mode = 2
+text = "0"
 
 [node name="Crosshair" type="Control" parent="."]
 mouse_filter = 2

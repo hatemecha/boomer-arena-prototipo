@@ -5,24 +5,14 @@
 [ext_resource type="Script" uid="uid://c8l36kb34krw4" path="res://scripts/weapons/hitscan_weapon.gd" id="3_smg"]
 [ext_resource type="PackedScene" uid="uid://du0vjwcpdc151" path="res://assets/models/weapons/low_poly_msmc.glb" id="4_msmc"]
 [ext_resource type="PackedScene" uid="uid://dlajk6orniyaq" path="res://scenes/vfx/VFX_MuzzleFlash.tscn" id="5_muzzle_vfx"]
+[ext_resource type="PackedScene" uid="uid://clvx85ly64hl5" path="res://Low Poly Wild West Guns/Revolvers/Rigged/Colt Revolver.fbx" id="6_revolver"]
+[ext_resource type="PackedScene" uid="uid://b2vu0m0g35oxl" path="res://Low Poly Wild West Guns/Shotguns/Rigged/Sawn-Off Shotgun.fbx" id="7_sawnoff"]
+[ext_resource type="PackedScene" uid="uid://boc0w1lbrumkn" path="res://Low Poly Wild West Guns/Rifles/Rigged/Repeater.fbx" id="8_repeater"]
+[ext_resource type="PackedScene" uid="uid://b7prcdw7ebatu" path="res://scenes/player/AmongUsPlayerModel.tscn" id="9_among_us"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.45
 height = 1.8
-
-[sub_resource type="BoxMesh" id="BoxMesh_body"]
-size = Vector3(0.7, 1.5, 0.45)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_body"]
-albedo_color = Color(0.18, 0.18, 0.2, 1)
-texture_filter = 0
-
-[sub_resource type="BoxMesh" id="BoxMesh_shotgun"]
-size = Vector3(0.26, 0.18, 0.95)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_shotgun"]
-albedo_color = Color(0.13, 0.12, 0.1, 1)
-texture_filter = 0
 
 [node name="Player" type="CharacterBody3D" unique_id=541657603]
 script = ExtResource("1_player")
@@ -31,10 +21,29 @@ script = ExtResource("1_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_player")
 
-[node name="BodyMesh" type="MeshInstance3D" parent="." unique_id=2088163639]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
-mesh = SubResource("BoxMesh_body")
-surface_material_override/0 = SubResource("StandardMaterial3D_body")
+[node name="BodyMesh" type="Node3D" parent="." unique_id=2088163639]
+
+[node name="AmongUsPlayerModel" parent="BodyMesh" unique_id=908926375 instance=ExtResource("9_among_us")]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+
+[node name="ThirdPersonWeaponRig" type="Node3D" parent="BodyMesh" unique_id=1081604627]
+transform = Transform3D(0.9659258, 0, -0.25881904, 0, 1, 0, 0.25881904, 0, 0.9659258, 0.48, 1.02, -0.54)
+
+[node name="SMGWorld" parent="BodyMesh/ThirdPersonWeaponRig" unique_id=1081604628 instance=ExtResource("4_msmc")]
+transform = Transform3D(0, 0, 0.34, 0, 0.34, 0, -0.34, 0, 0, 0, 0, 0)
+visible = false
+
+[node name="SawnOffWorld" parent="BodyMesh/ThirdPersonWeaponRig" unique_id=1081604629 instance=ExtResource("7_sawnoff")]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0, 0, 0)
+visible = false
+
+[node name="RevolverWorld" parent="BodyMesh/ThirdPersonWeaponRig" unique_id=1081604630 instance=ExtResource("6_revolver")]
+transform = Transform3D(1.55, 0, 0, 0, 1.55, 0, 0, 0, 1.55, 0, 0, 0)
+visible = false
+
+[node name="RepeaterWorld" parent="BodyMesh/ThirdPersonWeaponRig" unique_id=1081604631 instance=ExtResource("8_repeater")]
+transform = Transform3D(1.15, 0, 0, 0, 1.15, 0, 0, 0, 1.15, 0, 0, 0)
+visible = false
 
 [node name="CameraPivot" type="Node3D" parent="." unique_id=452553944]
 unique_name_in_owner = true
@@ -48,9 +57,13 @@ fov = 90.0
 [node name="SMGAimPose" type="Marker3D" parent="CameraPivot/PlayerCamera" unique_id=2062942031]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.264, -0.13)
 
+[node name="RevolverAimPose" type="Marker3D" parent="CameraPivot/PlayerCamera" unique_id=1804496237]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.04, -0.46, -0.34)
+
 [node name="SMG" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=215412435]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, -0.46, -0.24)
+visible = false
 script = ExtResource("3_smg")
 weapon_name = "SMG"
 damage = 12
@@ -70,29 +83,75 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05, 0.81, 0.018)
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00042326748, 0.101918936, -0.75758386)
 
-[node name="Shotgun" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=2005278481]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.34, -0.27, -0.78)
+[node name="SawnOff" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=300000003]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.24, -0.42, -0.62)
 visible = false
 script = ExtResource("3_smg")
-pellet_count = 8
-weapon_name = "Shotgun"
-damage = 9
-fire_rate = 0.75
-mag_size = 6
-reserve_ammo = 24
-reload_time = 1.45
-recoil_degrees = 4.5
-spread_degrees = 6.5
-weapon_range = 55.0
+pellet_count = 10
+weapon_name = "Sawn-Off"
+fire_rate = 0.85
+mag_size = 2
+reserve_ammo = 16
+reload_time = 1.8
+recoil_degrees = 8.0
+spread_degrees = 9.0
+weapon_range = 35.0
+aim_sight_path = NodePath("")
+reload_drop_distance = 0.25
+reload_tilt_degrees = 40.0
 
-[node name="WeaponMesh" type="MeshInstance3D" parent="CameraPivot/PlayerCamera/Shotgun" unique_id=932188970]
-mesh = SubResource("BoxMesh_shotgun")
-surface_material_override/0 = SubResource("StandardMaterial3D_shotgun")
+[node name="WeaponModel" parent="CameraPivot/PlayerCamera/SawnOff" unique_id=300000004 instance=ExtResource("7_sawnoff")]
+transform = Transform3D(1.3, 0, 0, 0, 1.3, 0, 0, 0, 1.3, 0, 0, 0)
 
-[node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/Shotgun" unique_id=1483196134 instance=ExtResource("5_muzzle_vfx")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.55)
+[node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/SawnOff" unique_id=1483196134 instance=ExtResource("5_muzzle_vfx")]
+transform = Transform3D(1.25, 0, 0, 0, 1.25, 0, 0, 0, 1.25, 0.016766801, 0.14072466, -0.47418845)
 flash_color = Color(1.2438526, 0.61902076, 1.827833e-06, 1)
 spark_count = 20
+
+[node name="Revolver" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=300000001]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.22, -0.48, -0.46)
+visible = false
+script = ExtResource("3_smg")
+weapon_name = "Revolver"
+damage = 38
+fire_rate = 0.38
+mag_size = 6
+reserve_ammo = 30
+reload_time = 1.9
+recoil_degrees = 5.0
+spread_degrees = 0.6
+aim_sight_path = NodePath("")
+aim_pose_path = NodePath("../RevolverAimPose")
+reload_drop_distance = 0.22
+reload_tilt_degrees = 30.0
+
+[node name="WeaponModel" parent="CameraPivot/PlayerCamera/Revolver" unique_id=300000002 instance=ExtResource("6_revolver")]
+transform = Transform3D(1.8, 0, 0, 0, 1.8, 0, 0, 0, 1.8, 0, 0, 0)
+
+[node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/Revolver" unique_id=924433808 instance=ExtResource("5_muzzle_vfx")]
+transform = Transform3D(0.55, 0, 0, 0, 0.55, 0, 0, 0, 0.55, 0, 0.2623794, -0.33259)
+
+[node name="Repeater" type="Node3D" parent="CameraPivot/PlayerCamera" unique_id=300000005]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, -0.46, -0.64)
+script = ExtResource("3_smg")
+weapon_name = "Repeater"
+damage = 22
+fire_rate = 0.28
+mag_size = 12
+reserve_ammo = 48
+reload_time = 1.6
+recoil_degrees = 3.0
+spread_degrees = 0.4
+weapon_range = 120.0
+aim_sight_path = NodePath("")
+reload_tilt_degrees = 20.0
+
+[node name="WeaponModel" parent="CameraPivot/PlayerCamera/Repeater" unique_id=300000006 instance=ExtResource("8_repeater")]
+transform = Transform3D(0.95, 0, 0, 0, 0.95, 0, 0, 0, 0.95, 0, 0, 0)
+
+[node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/Repeater" unique_id=811399744 instance=ExtResource("5_muzzle_vfx")]
+transform = Transform3D(0.65, 0, 0, 0, 0.65, 0, 0, 0, 0.65, 0.01194495, 0.1765064, -0.6490283)
+spark_count = 10
 
 [node name="PlayerHealth" type="Node" parent="." unique_id=756525158]
 unique_name_in_owner = true

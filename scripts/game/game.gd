@@ -564,7 +564,9 @@ func _send_local_player_state() -> void:
 			_player.camera_pivot.rotation_degrees.x,
 			_player.velocity,
 			_player.health.is_dead,
-			_player.is_crouching()
+			_player.is_crouching(),
+			_player.get_active_weapon_index(),
+			_player.is_aiming()
 		)
 
 
@@ -601,7 +603,9 @@ func _broadcast_player_state(player: PlayerController) -> void:
 		player.camera_pivot.rotation_degrees.x,
 		player.velocity,
 		player.health.is_dead,
-		player.is_crouching()
+		player.is_crouching(),
+		player.get_active_weapon_index(),
+		player.is_aiming()
 	)
 
 
@@ -613,7 +617,9 @@ func _broadcast_player_state_values(
 	pitch_degrees: float,
 	velocity: Vector3,
 	is_dead_state: bool,
-	is_crouching_state: bool
+	is_crouching_state: bool,
+	active_weapon_index: int,
+	is_aiming_state: bool
 ) -> void:
 	_network_receive_player_state.rpc(
 		peer_id,
@@ -623,7 +629,9 @@ func _broadcast_player_state_values(
 		pitch_degrees,
 		velocity,
 		is_dead_state,
-		is_crouching_state
+		is_crouching_state,
+		active_weapon_index,
+		is_aiming_state
 	)
 
 
@@ -927,7 +935,9 @@ func _network_receive_player_state(
 	pitch_degrees: float,
 	velocity: Vector3,
 	is_dead_state: bool,
-	is_crouching_state: bool
+	is_crouching_state: bool,
+	active_weapon_index: int = 0,
+	is_aiming_state: bool = false
 ) -> void:
 	if _is_local_peer(peer_id):
 		return
@@ -936,6 +946,7 @@ func _network_receive_player_state(
 	if player == null:
 		return
 	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, is_dead_state, is_crouching_state)
+	player.apply_network_combat_state(active_weapon_index, is_aiming_state)
 
 
 @rpc("authority", "reliable")
@@ -1013,7 +1024,9 @@ func _server_receive_player_state(
 	pitch_degrees: float,
 	velocity: Vector3,
 	_is_dead_state: bool,
-	is_crouching_state: bool
+	is_crouching_state: bool,
+	active_weapon_index: int = 0,
+	is_aiming_state: bool = false
 ) -> void:
 	if not multiplayer.is_server():
 		return
@@ -1027,7 +1040,8 @@ func _server_receive_player_state(
 	if player == null:
 		return
 	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state)
-	_broadcast_player_state_values(sender_peer_id, player_id, position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state)
+	player.apply_network_combat_state(active_weapon_index, is_aiming_state)
+	_broadcast_player_state_values(sender_peer_id, player_id, position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state, active_weapon_index, is_aiming_state)
 
 
 @rpc("any_peer", "reliable")
