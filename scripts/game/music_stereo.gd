@@ -285,8 +285,8 @@ func _load_audio_stream(stream_path: String) -> AudioStream:
 	return ResourceLoader.load(stream_path) as AudioStream
 
 
-func _on_interaction_area_body_entered(body: Node3D) -> void:
-	var player: PlayerController = body as PlayerController
+func _on_interaction_area_body_entered(entered_body: Node3D) -> void:
+	var player: PlayerController = entered_body as PlayerController
 	if player == null or not player.is_local_controlled():
 		return
 
@@ -295,8 +295,8 @@ func _on_interaction_area_body_entered(body: Node3D) -> void:
 		proximity_changed.emit(true)
 
 
-func _on_interaction_area_body_exited(body: Node3D) -> void:
-	var player: PlayerController = body as PlayerController
+func _on_interaction_area_body_exited(exited_body: Node3D) -> void:
+	var player: PlayerController = exited_body as PlayerController
 	if player == null:
 		return
 

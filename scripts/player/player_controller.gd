@@ -105,9 +105,14 @@ signal local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2)
 @export_range(1.8, 6.0) var debug_third_person_distance: float = 2.75
 @export var debug_third_person_shoulder_offset: Vector3 = Vector3(0.42, 0.12, 0.0)
 @export_range(0.5, 1.0) var debug_third_person_aim_distance_scale: float = 0.82
+@export_range(0.2, 3.0) var third_person_target_height: float = 1.45
+@export_range(0.2, 3.0) var third_person_min_distance: float = 0.65
+@export_range(1.0, 40.0) var third_person_follow_smoothing: float = 18.0
+@export_range(0.01, 0.5) var third_person_collision_margin: float = 0.18
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/PlayerCamera
+@onready var _viewmodel_fill_light: OmniLight3D = $CameraPivot/PlayerCamera/ViewmodelFill
 @onready var _phantom_camera_host: PhantomCameraHost = $CameraPivot/PlayerCamera/PhantomCameraHost
 @onready var health: PlayerHealth = $PlayerHealth
 @onready var body_mesh: Node3D = $BodyMesh
@@ -157,9 +162,12 @@ var _camera_pitch_inertia: float = 0.0
 var _camera_yaw_inertia: float = 0.0
 var _camera_roll: float = 0.0
 var _recoil_pitch_offset: float = 0.0
+var _recoil_tween: Tween
+var _camera_shake_tween: Tween
+var _camera_shake_origin: Vector3 = Vector3.ZERO
 var _previous_camera_yaw: float = 0.0
 var _landing_offset: float = 0.0
-var _was_on_floor: bool = false
+var _respawn_invulnerability_token: int = 0
 var _wall_jump_cooldown_timer: float = 0.0
 var _wall_jump_air_control_lock_timer: float = 0.0
 var _air_time: float = 0.0
@@ -183,8 +191,11 @@ var _limb_rest_rotations: Dictionary = {}
 var _debug_camera_mode: DebugCameraMode = DebugCameraMode.FIRST_PERSON
 var _third_back_pcam: PhantomCamera3D
 var _third_front_pcam: PhantomCamera3D
+var _third_person_camera_initialized: bool = false
+var _third_person_camera_position: Vector3 = Vector3.ZERO
 
 
+#region Ciclo de vida e input
 func _ready() -> void:
 	DefaultInputActions.ensure_default_actions()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -258,8 +269,10 @@ func _physics_process(delta: float) -> void:
 		_handle_weapon_input()
 	_emit_local_view_motion()
 	debug_stats_changed.emit(global_position, Vector2(velocity.x, velocity.z).length())
+#endregion
 
 
+#region API publica (HUD, pickups, Game y red)
 func add_ammo(amount: int) -> bool:
 	if weapon == null:
 		push_error("Player has no active weapon to receive ammo.")
@@ -314,6 +327,8 @@ func set_local_control_enabled(value: bool) -> void:
 	_local_control_enabled = value
 	if camera != null:
 		camera.current = value
+	if _viewmodel_fill_light != null:
+		_viewmodel_fill_light.visible = value
 	_update_body_visibility()
 	_update_first_person_weapon_visibility()
 	_update_third_person_weapon_visibility()
@@ -458,8 +473,10 @@ func set_body_color(color: Color) -> void:
 	material.albedo_color = color
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	_apply_body_material(body_visual if body_visual != null else body_mesh, material)
+#endregion
 
 
+#region Movimiento, wall jump y crouch
 func _handle_movement(delta: float) -> void:
 	var was_on_floor_before_move: bool = is_on_floor()
 	var input_direction: Vector2 = _get_move_input()
@@ -499,7 +516,6 @@ func _handle_movement(delta: float) -> void:
 	move_and_slide()
 	if not was_on_floor_before_move and is_on_floor():
 		_landing_offset = landing_camera_dip
-	_was_on_floor = is_on_floor()
 
 
 func _update_wall_jump_timers(delta: float, is_on_floor_now: bool) -> void:
@@ -700,8 +716,10 @@ func _apply_crouch_collision(blend: float) -> void:
 		Vector3(_standing_collision_position.x, _crouching_collision_height * 0.5, _standing_collision_position.z),
 		blend
 	)
+#endregion
 
 
+#region Camaras de debug (tercera persona)
 func _setup_debug_cameras() -> void:
 	_third_back_pcam = get_node_or_null("ThirdPersonBackDebugPCam") as PhantomCamera3D
 	_third_front_pcam = get_node_or_null("ThirdPersonFrontDebugPCam") as PhantomCamera3D
@@ -761,9 +779,11 @@ func _restore_first_person_camera() -> void:
 	if camera == null:
 		return
 
+	_third_person_camera_initialized = false
 	camera.top_level = false
 	camera.position = Vector3.ZERO
 	camera.rotation = Vector3.ZERO
+	camera.current = _is_locally_controlled()
 	camera.reset_physics_interpolation()
 
 
@@ -779,8 +799,10 @@ func _activate_debug_third_person_camera(pcam: PhantomCamera3D, front: bool) -> 
 	_sync_debug_third_person_rotation(pcam, front)
 
 	if _phantom_camera_host != null:
-		_phantom_camera_host.process_mode = Node.PROCESS_MODE_INHERIT
-		_phantom_camera_host.refresh_pcam_list_priorty()
+		_phantom_camera_host.process_mode = Node.PROCESS_MODE_DISABLED
+	camera.top_level = true
+	camera.current = _is_locally_controlled()
+	_third_person_camera_initialized = false
 
 
 func _apply_debug_third_person_combat_settings(pcam: PhantomCamera3D) -> void:
@@ -811,6 +833,7 @@ func _update_debug_cameras() -> void:
 
 	_apply_debug_third_person_combat_settings(active_pcam)
 	_sync_debug_third_person_rotation(active_pcam, is_front)
+	_update_manual_third_person_camera(get_process_delta_time(), is_front)
 
 
 func _sync_debug_third_person_rotation(pcam: PhantomCamera3D, front: bool) -> void:
@@ -822,77 +845,85 @@ func _is_debug_first_person_view() -> bool:
 	return not debug_camera_enabled or _debug_camera_mode == DebugCameraMode.FIRST_PERSON
 
 
+func _update_manual_third_person_camera(delta: float, front: bool) -> void:
+	if camera == null:
+		return
+
+	var aim_scale: float = lerpf(1.0, debug_third_person_aim_distance_scale, _aim_blend)
+	var distance: float = debug_third_person_distance * aim_scale
+	var shoulder_offset: Vector3 = debug_third_person_shoulder_offset
+	if _is_aiming:
+		shoulder_offset.x *= 1.18
+		shoulder_offset.y -= 0.04
+
+	var yaw_basis := Basis(Vector3.UP, rotation.y)
+	var target_position: Vector3 = global_position + Vector3.UP * third_person_target_height
+	target_position += yaw_basis.x * shoulder_offset.x
+	target_position += Vector3.UP * shoulder_offset.y
+
+	var pitch_radians: float = deg_to_rad(clampf(_pitch_degrees, -72.0, 72.0))
+	var horizontal_distance: float = cos(pitch_radians) * distance
+	var vertical_distance: float = sin(pitch_radians) * distance
+	var view_sign: float = -1.0 if front else 1.0
+	var camera_direction: Vector3 = (yaw_basis.z * view_sign * horizontal_distance) + Vector3.UP * vertical_distance
+	var desired_position: Vector3 = target_position + camera_direction
+	var solved_position: Vector3 = _solve_third_person_camera_collision(target_position, desired_position)
+	var follow_weight: float = 1.0 if not _third_person_camera_initialized else 1.0 - exp(-third_person_follow_smoothing * delta)
+	_third_person_camera_position = _third_person_camera_position.lerp(solved_position, follow_weight)
+	_third_person_camera_initialized = true
+
+	camera.global_position = _third_person_camera_position
+	camera.look_at(target_position, Vector3.UP)
+	camera.rotate_object_local(Vector3.RIGHT, deg_to_rad(_recoil_pitch_offset))
+
+
+func _solve_third_person_camera_collision(target_position: Vector3, desired_position: Vector3) -> Vector3:
+	if get_world_3d() == null:
+		return desired_position
+
+	var target_to_camera: Vector3 = desired_position - target_position
+	var desired_distance: float = target_to_camera.length()
+	if desired_distance <= third_person_min_distance:
+		return desired_position
+
+	var query := PhysicsRayQueryParameters3D.create(target_position, desired_position)
+	query.exclude = [get_rid()]
+	query.collision_mask = collision_mask
+	query.hit_from_inside = false
+
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return desired_position
+
+	var hit_position: Vector3 = hit.get("position", desired_position)
+	var direction: Vector3 = target_to_camera / desired_distance
+	var corrected_distance: float = clampf(
+		target_position.distance_to(hit_position) - third_person_collision_margin,
+		third_person_min_distance,
+		desired_distance
+	)
+	return target_position + direction * corrected_distance
+#endregion
+
+
+#region Camara inmersiva (bob, tilt, inercia)
 func _update_camera_motion(delta: float) -> void:
 	if camera_pivot == null or camera == null or not _is_debug_first_person_view():
 		return
 
-	var horizontal_speed: float = _get_horizontal_speed()
-	var is_on_ground: bool = is_on_floor() and _gameplay_input_enabled and not _is_dead
-	var is_running: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching and horizontal_speed > walk_speed + 0.25
 	var crouch_offset: float = crouch_camera_drop * _crouch_blend
-	var target_bob_offset := Vector3.ZERO
-	var motion_intensity: float = lerpf(1.0, camera_aim_motion_multiplier, _aim_blend)
-	var blend_weight: float = 1.0 - exp(-bob_blend_speed * delta)
 
 	if camera_motion_enabled:
-		var target_motion_speed: float = horizontal_speed if is_on_ground else 0.0
-		_smoothed_motion_speed = lerpf(_smoothed_motion_speed, target_motion_speed, blend_weight)
-
-		var speed_blend: float = clampf((_smoothed_motion_speed - 0.35) / maxf(walk_speed, 0.001), 0.0, 1.0)
-		var target_bob_blend: float = speed_blend if is_on_ground else 0.0
-		_bob_blend = lerpf(_bob_blend, target_bob_blend, blend_weight)
-
-		var entry_blend: float = lerpf(bob_entry_floor, 1.0, _bob_blend)
-
-		if _bob_blend > 0.01:
-			var run_blend: float = clampf((_smoothed_motion_speed - walk_speed) / maxf(run_speed - walk_speed, 0.001), 0.0, 1.0)
-			var stride_length: float = lerpf(walk_stride_length, run_stride_length, run_blend if is_running else run_blend * 0.65)
-			var stride_frequency: float = (_smoothed_motion_speed / maxf(stride_length, 0.001)) * bob_frequency_scale
-			_bob_time += delta * stride_frequency
-
-			var bob_amount: float = lerpf(walk_bob_amount, run_bob_amount, run_blend) * motion_intensity * entry_blend
-			var stride_wave: float = sin(_bob_time * TAU)
-			target_bob_offset.y = stride_wave * bob_amount
-			target_bob_offset.x = stride_wave * bob_amount * bob_lateral_ratio
-			target_bob_offset.z = cos(_bob_time * TAU) * bob_amount * bob_forward_ratio
-		elif is_on_ground:
-			_breath_time += delta * idle_breath_frequency
-			var breath_wave: float = sin(_breath_time * TAU)
-			var breath_amount: float = idle_breath_amount * motion_intensity
-			target_bob_offset.y = breath_wave * breath_amount
-			target_bob_offset.x = sin(_breath_time * TAU * 0.5) * breath_amount * 0.35
-			target_bob_offset.z = cos(_breath_time * TAU * 0.33) * breath_amount * 0.2
-
-		var bob_follow_weight: float = lerpf(blend_weight, minf(blend_weight * 1.65, 1.0), _bob_blend)
-		_smoothed_bob_offset = _smoothed_bob_offset.lerp(target_bob_offset, bob_follow_weight)
-
-		var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
-		var raw_strafe_factor: float = clampf(local_velocity.x / maxf(run_speed * 0.85, 0.001), -1.0, 1.0)
-		_smoothed_strafe_factor = lerpf(_smoothed_strafe_factor, raw_strafe_factor, blend_weight)
-		var tilt_strength: float = lerpf(0.45, 1.0, _bob_blend) * motion_intensity
-		var target_roll: float = -_smoothed_strafe_factor * camera_roll_amount * tilt_strength
-		var strafe_pitch: float = _smoothed_strafe_factor * camera_strafe_pitch_amount * tilt_strength
-		var strafe_yaw: float = _smoothed_strafe_factor * camera_strafe_yaw_amount * tilt_strength
-		if is_on_ground and _bob_blend < 0.05:
-			target_roll += sin(_breath_time * TAU * 0.5) * idle_breath_roll_amount * motion_intensity
-		var roll_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
-		_camera_roll = lerpf(_camera_roll, target_roll, roll_weight)
-
-		var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _previous_camera_yaw, -PI, PI))
-		_previous_camera_yaw = rotation.y
-		var look_kick := Vector2(
-			_last_view_delta.y * camera_look_inertia * 0.07,
-			-_last_view_delta.x * camera_look_inertia * 0.05 - yaw_delta_degrees * camera_look_inertia * 0.32
-		)
-		var return_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
-		_camera_pitch_inertia = lerpf(_camera_pitch_inertia + look_kick.x, 0.0, return_weight)
-		_camera_yaw_inertia = lerpf(_camera_yaw_inertia + look_kick.y, 0.0, return_weight)
-		_camera_pitch_inertia = clampf(_camera_pitch_inertia, -2.6, 2.6)
-		_camera_yaw_inertia = clampf(_camera_yaw_inertia, -2.2, 2.2)
+		var motion_intensity: float = lerpf(1.0, camera_aim_motion_multiplier, _aim_blend)
+		var blend_weight: float = 1.0 - exp(-bob_blend_speed * delta)
+		var is_on_ground: bool = is_on_floor() and _gameplay_input_enabled and not _is_dead
+		_update_bob_offset(delta, blend_weight, is_on_ground, motion_intensity)
+		var strafe_tilt: Vector2 = _update_camera_tilt(delta, blend_weight, is_on_ground, motion_intensity)
+		_update_look_inertia(delta)
 
 		camera.rotation_degrees = Vector3(
-			_camera_pitch_inertia + strafe_pitch + _recoil_pitch_offset,
-			_camera_yaw_inertia + strafe_yaw,
+			_camera_pitch_inertia + strafe_tilt.x + _recoil_pitch_offset,
+			_camera_yaw_inertia + strafe_tilt.y,
 			_camera_roll
 		)
 	else:
@@ -904,6 +935,72 @@ func _update_camera_motion(delta: float) -> void:
 	_landing_offset = move_toward(_landing_offset, 0.0, delta * 0.45)
 	_wall_jump_camera_kick_offset = _wall_jump_camera_kick_offset.move_toward(Vector3.ZERO, delta * maxf(wall_jump_camera_kick * 12.0, 0.05))
 	camera_pivot.position = _standing_camera_pivot_position + _smoothed_bob_offset + _wall_jump_camera_kick_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
+
+
+func _update_bob_offset(delta: float, blend_weight: float, is_on_ground: bool, motion_intensity: float) -> void:
+	var horizontal_speed: float = _get_horizontal_speed()
+	var is_running: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching and horizontal_speed > walk_speed + 0.25
+	var target_bob_offset := Vector3.ZERO
+
+	var target_motion_speed: float = horizontal_speed if is_on_ground else 0.0
+	_smoothed_motion_speed = lerpf(_smoothed_motion_speed, target_motion_speed, blend_weight)
+
+	var speed_blend: float = clampf((_smoothed_motion_speed - 0.35) / maxf(walk_speed, 0.001), 0.0, 1.0)
+	var target_bob_blend: float = speed_blend if is_on_ground else 0.0
+	_bob_blend = lerpf(_bob_blend, target_bob_blend, blend_weight)
+
+	var entry_blend: float = lerpf(bob_entry_floor, 1.0, _bob_blend)
+
+	if _bob_blend > 0.01:
+		var run_blend: float = clampf((_smoothed_motion_speed - walk_speed) / maxf(run_speed - walk_speed, 0.001), 0.0, 1.0)
+		var stride_length: float = lerpf(walk_stride_length, run_stride_length, run_blend if is_running else run_blend * 0.65)
+		var stride_frequency: float = (_smoothed_motion_speed / maxf(stride_length, 0.001)) * bob_frequency_scale
+		_bob_time += delta * stride_frequency
+
+		var bob_amount: float = lerpf(walk_bob_amount, run_bob_amount, run_blend) * motion_intensity * entry_blend
+		var stride_wave: float = sin(_bob_time * TAU)
+		target_bob_offset.y = stride_wave * bob_amount
+		target_bob_offset.x = stride_wave * bob_amount * bob_lateral_ratio
+		target_bob_offset.z = cos(_bob_time * TAU) * bob_amount * bob_forward_ratio
+	elif is_on_ground:
+		_breath_time += delta * idle_breath_frequency
+		var breath_wave: float = sin(_breath_time * TAU)
+		var breath_amount: float = idle_breath_amount * motion_intensity
+		target_bob_offset.y = breath_wave * breath_amount
+		target_bob_offset.x = sin(_breath_time * TAU * 0.5) * breath_amount * 0.35
+		target_bob_offset.z = cos(_breath_time * TAU * 0.33) * breath_amount * 0.2
+
+	var bob_follow_weight: float = lerpf(blend_weight, minf(blend_weight * 1.65, 1.0), _bob_blend)
+	_smoothed_bob_offset = _smoothed_bob_offset.lerp(target_bob_offset, bob_follow_weight)
+
+
+func _update_camera_tilt(delta: float, blend_weight: float, is_on_ground: bool, motion_intensity: float) -> Vector2:
+	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+	var raw_strafe_factor: float = clampf(local_velocity.x / maxf(run_speed * 0.85, 0.001), -1.0, 1.0)
+	_smoothed_strafe_factor = lerpf(_smoothed_strafe_factor, raw_strafe_factor, blend_weight)
+	var tilt_strength: float = lerpf(0.45, 1.0, _bob_blend) * motion_intensity
+	var target_roll: float = -_smoothed_strafe_factor * camera_roll_amount * tilt_strength
+	var strafe_pitch: float = _smoothed_strafe_factor * camera_strafe_pitch_amount * tilt_strength
+	var strafe_yaw: float = _smoothed_strafe_factor * camera_strafe_yaw_amount * tilt_strength
+	if is_on_ground and _bob_blend < 0.05:
+		target_roll += sin(_breath_time * TAU * 0.5) * idle_breath_roll_amount * motion_intensity
+	var roll_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
+	_camera_roll = lerpf(_camera_roll, target_roll, roll_weight)
+	return Vector2(strafe_pitch, strafe_yaw)
+
+
+func _update_look_inertia(delta: float) -> void:
+	var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _previous_camera_yaw, -PI, PI))
+	_previous_camera_yaw = rotation.y
+	var look_kick := Vector2(
+		_last_view_delta.y * camera_look_inertia * 0.07,
+		-_last_view_delta.x * camera_look_inertia * 0.05 - yaw_delta_degrees * camera_look_inertia * 0.32
+	)
+	var return_weight: float = 1.0 - exp(-camera_look_return_speed * delta)
+	_camera_pitch_inertia = lerpf(_camera_pitch_inertia + look_kick.x, 0.0, return_weight)
+	_camera_yaw_inertia = lerpf(_camera_yaw_inertia + look_kick.y, 0.0, return_weight)
+	_camera_pitch_inertia = clampf(_camera_pitch_inertia, -2.6, 2.6)
+	_camera_yaw_inertia = clampf(_camera_yaw_inertia, -2.2, 2.2)
 
 
 func _get_horizontal_speed() -> float:
@@ -921,8 +1018,10 @@ func _emit_local_view_motion() -> void:
 
 	local_view_motion_changed.emit(_last_view_delta, _get_local_horizontal_velocity())
 	_last_view_delta = Vector2.ZERO
+#endregion
 
 
+#region Input de armas y mira de gamepad
 func _handle_weapon_input() -> void:
 	if Input.is_action_just_pressed(_action("weapon_1")):
 		_set_active_weapon(0)
@@ -951,7 +1050,7 @@ func _handle_weapon_input() -> void:
 
 
 func _handle_gamepad_look(delta: float) -> void:
-	if mouse_look_enabled or not _gameplay_input_enabled:
+	if not _gameplay_input_enabled:
 		return
 
 	var look_direction: Vector2 = Input.get_vector(_action("look_left"), _action("look_right"), _action("look_up"), _action("look_down"))
@@ -965,8 +1064,10 @@ func _handle_gamepad_look(delta: float) -> void:
 	_pitch_degrees = clampf(_pitch_degrees - look_direction.y * effective_sensitivity * 55.0 * delta, -88.0, 88.0)
 	camera_pivot.rotation_degrees.x = _pitch_degrees
 	_last_view_delta += look_direction * effective_sensitivity * 180.0 * delta
+#endregion
 
 
+#region Caches de armas, esqueleto y pose
 func _collect_weapons() -> void:
 	_weapons.clear()
 	_weapon_default_transforms.clear()
@@ -1027,8 +1128,10 @@ func _cache_standing_pose() -> void:
 	_standing_collision_height = capsule_shape.height
 	_crouching_collision_height = maxf(capsule_shape.radius * 2.0, _standing_collision_height * crouch_height_multiplier)
 	_standing_collision_position = collision_shape.position
+#endregion
 
 
+#region Visual de cuerpo en tercera persona
 func _update_body_visibility() -> void:
 	if body_mesh == null:
 		return
@@ -1038,6 +1141,9 @@ func _update_body_visibility() -> void:
 
 
 func _update_first_person_weapon_visibility() -> void:
+	if _viewmodel_fill_light != null:
+		_viewmodel_fill_light.visible = _is_locally_controlled() and _is_debug_first_person_view()
+
 	for weapon_index in range(_weapons.size()):
 		_weapons[weapon_index].visible = (
 			_is_locally_controlled()
@@ -1157,8 +1263,10 @@ func _should_tint_body_mesh(mesh_instance: MeshInstance3D) -> bool:
 		if surface_material != null and surface_material.resource_name.begins_with("Material"):
 			return false
 	return true
+#endregion
 
 
+#region Arma activa, aim y weapon sway
 func _set_active_weapon(index: int) -> void:
 	if index < 0 or index >= _weapons.size() or index == _active_weapon_index:
 		return
@@ -1308,15 +1416,20 @@ func _build_aim_transform(active_weapon: WeaponBase, default_transform: Transfor
 		aim_origin += aim_basis * aim_view_offset
 
 	return Transform3D(aim_basis, aim_origin)
+#endregion
 
 
+#region Recoil, daño, muerte y red
 func _on_weapon_fired(fired_weapon: WeaponBase) -> void:
 	if fired_weapon == null:
 		return
 
+	# Un solo tween de recoil activo; con cadencia alta evitamos apilar decenas de tweens.
+	if _recoil_tween != null and _recoil_tween.is_valid():
+		_recoil_tween.kill()
 	_recoil_pitch_offset = -fired_weapon.recoil_degrees
-	var tween: Tween = create_tween()
-	tween.tween_method(_set_recoil_pitch_offset, _recoil_pitch_offset, 0.0, 0.11)
+	_recoil_tween = create_tween()
+	_recoil_tween.tween_method(_set_recoil_pitch_offset, _recoil_pitch_offset, 0.0, 0.11)
 	weapon_fired.emit(fired_weapon.weapon_name)
 
 
@@ -1336,10 +1449,16 @@ func _shake_camera(strength: float, duration: float) -> void:
 	if not _is_locally_controlled():
 		return
 
-	var original_position: Vector3 = camera.position
-	var tween: Tween = create_tween()
-	tween.tween_property(camera, "position", original_position + Vector3(randf_range(-strength, strength), randf_range(-strength, strength), 0.0), duration * 0.35)
-	tween.tween_property(camera, "position", original_position, duration * 0.65)
+	# Si hay un shake en curso lo cortamos y volvemos al origen real para no acumular deriva.
+	if _camera_shake_tween != null and _camera_shake_tween.is_valid():
+		_camera_shake_tween.kill()
+		camera.position = _camera_shake_origin
+	else:
+		_camera_shake_origin = camera.position
+
+	_camera_shake_tween = create_tween()
+	_camera_shake_tween.tween_property(camera, "position", _camera_shake_origin + Vector3(randf_range(-strength, strength), randf_range(-strength, strength), 0.0), duration * 0.35)
+	_camera_shake_tween.tween_property(camera, "position", _camera_shake_origin, duration * 0.65)
 
 
 func _update_remote_interpolation(delta: float) -> void:
@@ -1360,8 +1479,12 @@ func _start_respawn_invulnerability() -> void:
 	if not _is_invulnerable:
 		return
 
+	# Token para que un timer viejo (de un respawn anterior) no corte la invulnerabilidad nueva.
+	_respawn_invulnerability_token += 1
+	var token: int = _respawn_invulnerability_token
 	await get_tree().create_timer(respawn_invulnerability_time).timeout
-	_is_invulnerable = false
+	if token == _respawn_invulnerability_token:
+		_is_invulnerable = false
 
 
 func _action(base_name: StringName) -> StringName:
@@ -1376,3 +1499,4 @@ func _is_locally_controlled() -> bool:
 	if multiplayer.multiplayer_peer == null:
 		return true
 	return is_multiplayer_authority()
+#endregion

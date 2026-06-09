@@ -5,13 +5,23 @@ const WALL_MATERIAL: Material = preload("res://assets/materials/foxtex_concrete_
 const CEILING_MATERIAL: Material = preload("res://assets/materials/foxtex_ceiling_panel.tres")
 const DARK_PANEL_MATERIAL: Material = preload("res://assets/materials/foxtex_dark_panel.tres")
 const RUST_MATERIAL: Material = preload("res://assets/materials/foxtex_rust_red_panel.tres")
+const TRIM_MATERIAL: Material = preload("res://assets/materials/foxtex_metal_trim.tres")
+const PIPES_SCENE: PackedScene = preload("res://3D Retro Plumbing & Wiring/Pipes.blend")
+const WIRES_SCENE: PackedScene = preload("res://3D Retro Plumbing & Wiring/Wires.blend")
+const TRANSFORMER_SCENE: PackedScene = preload("res://3D Retro Plumbing & Wiring/Transformer.blend")
+const CIRCUIT_BREAKER_SCENE: PackedScene = preload("res://3D Retro Plumbing & Wiring/Circuit Breaker.blend")
+const PIPE_VALVE_SCENE: PackedScene = preload("res://3D Retro Plumbing & Wiring/Pipe Valve.blend")
 
 var _openings_configured: bool = false
+var _props_configured: bool = false
 
 
 func _ready() -> void:
 	_configure_real_window_openings()
 	_configure_exterior_views()
+	_configure_aisle_fill_lights()
+	_configure_industrial_props()
+	_notify_visual_director_scene_changed()
 
 
 func _configure_real_window_openings() -> void:
@@ -123,3 +133,86 @@ func _configure_sky_portal(node_name: String, portal_position: Vector3, portal_s
 		return
 	sky_portal.position = portal_position
 	sky_portal.scale = portal_scale
+
+
+func _configure_aisle_fill_lights() -> void:
+	_create_aisle_fill_light("AisleFillCenter", Vector3(0.0, 4.2, 0.0))
+	_create_aisle_fill_light("AisleFillWest", Vector3(-6.0, 3.6, -5.0))
+	_create_aisle_fill_light("AisleFillEast", Vector3(6.0, 3.6, 5.0))
+	_create_aisle_fill_light("AisleFillNorth", Vector3(0.0, 3.8, -8.0))
+	_create_aisle_fill_light("AisleFillSouth", Vector3(0.0, 3.8, 8.0))
+	_create_aisle_fill_light("AisleFillLowCenter", Vector3(0.0, 2.6, 0.0))
+
+
+func _create_aisle_fill_light(light_name: String, light_position: Vector3) -> void:
+	if has_node(light_name):
+		return
+
+	var aisle_light := OmniLight3D.new()
+	aisle_light.name = light_name
+	aisle_light.position = light_position
+	aisle_light.shadow_enabled = false
+	aisle_light.light_color = Color(0.5, 0.72, 0.82)
+	aisle_light.light_energy = 1.35
+	aisle_light.omni_range = 16.0
+	aisle_light.light_indirect_energy = 0.22
+	add_child(aisle_light)
+
+
+func _configure_industrial_props() -> void:
+	if _props_configured:
+		return
+	_props_configured = true
+
+	_spawn_prop_scene(PIPES_SCENE, "PropCeilingPipes", Vector3(-2.0, 8.35, -6.0), Vector3(1.15, 1.15, 1.15), Vector3(0.0, 1.5708, 0.0))
+	_spawn_prop_scene(WIRES_SCENE, "PropCeilingWires", Vector3(6.5, 8.1, -1.5), Vector3(0.9, 0.9, 0.9), Vector3(0.0, -0.35, 0.0))
+	_spawn_prop_scene(TRANSFORMER_SCENE, "PropWestTransformer", Vector3(-15.2, 1.1, -11.0), Vector3(0.75, 0.75, 0.75), Vector3(0.0, 1.5708, 0.0))
+	_spawn_prop_scene(CIRCUIT_BREAKER_SCENE, "PropEastBreaker", Vector3(15.85, 2.0, -5.5), Vector3(0.55, 0.55, 0.55), Vector3(0.0, -1.5708, 0.0))
+	_spawn_prop_scene(PIPE_VALVE_SCENE, "PropNorthValve", Vector3(3.2, 3.55, -16.35), Vector3(0.45, 0.45, 0.45), Vector3(0.0, 3.14159, 0.0))
+
+
+func _spawn_prop_scene(
+	prop_scene: PackedScene,
+	node_name: String,
+	prop_position: Vector3,
+	prop_scale: Vector3,
+	prop_rotation: Vector3
+) -> void:
+	if has_node(node_name) or prop_scene == null:
+		return
+
+	var prop_root: Node3D = prop_scene.instantiate() as Node3D
+	if prop_root == null:
+		push_warning("Industrial prop %s did not instantiate as Node3D." % node_name)
+		return
+
+	prop_root.name = node_name
+	prop_root.position = prop_position
+	prop_root.rotation = prop_rotation
+	prop_root.scale = prop_scale
+	add_child(prop_root)
+	_apply_psx_materials(prop_root, TRIM_MATERIAL)
+
+
+func _notify_visual_director_scene_changed() -> void:
+	var game_root: Node = get_parent()
+	if game_root == null:
+		return
+	var visual_director: PSXVisualDirector = game_root.get_node_or_null("PSXVisualDirector") as PSXVisualDirector
+	if visual_director != null:
+		visual_director.invalidate_scene_cache()
+
+
+func _apply_psx_materials(root: Node, material: Material) -> void:
+	if material == null:
+		return
+	for mesh_instance in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_node := mesh_instance as MeshInstance3D
+		var mesh: Mesh = mesh_node.mesh
+		if mesh == null:
+			continue
+		for surface_index in range(mesh.get_surface_count()):
+			var surface_material: Material = material.duplicate()
+			if surface_material is BaseMaterial3D:
+				(surface_material as BaseMaterial3D).texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+			mesh_node.set_surface_override_material(surface_index, surface_material)

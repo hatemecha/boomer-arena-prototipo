@@ -10,15 +10,15 @@ extends Node
 @export_range(0.0, 1.0) var bass_influence: float = 0.7
 
 # Arena light energy: multiplier at trough vs peak of beat
-@export_range(0.0, 1.0) var arena_energy_min: float = 0.18
+@export_range(0.0, 1.0) var arena_energy_min: float = 0.62
 @export_range(1.0, 8.0) var arena_energy_max: float = 4.2
 
 # Window fill multipliers
-@export_range(0.0, 1.0) var fill_energy_min: float = 0.08
+@export_range(0.0, 1.0) var fill_energy_min: float = 0.58
 @export_range(1.0, 6.0) var fill_energy_max: float = 2.2
 
 # Panel emission energy multiplier at trough vs peak
-@export_range(0.0, 1.0) var panel_energy_min: float = 0.20
+@export_range(0.0, 1.0) var panel_energy_min: float = 0.55
 @export_range(1.0, 10.0) var panel_energy_max: float = 5.5
 
 # Beat decay sharpness — higher = snappier strobe flash
@@ -91,7 +91,7 @@ var _current_beat_pulse: float = 0.0
 
 func _ready() -> void:
 	_palette_extractor = CoverPaletteExtractor.new()
-	_palette = _palette_extractor._fallback_palette()
+	_palette = _palette_extractor.get_fallback_palette()
 
 
 func bind(music_stereo: MusicStereo, visual_director: PSXVisualDirector) -> void:
@@ -104,7 +104,9 @@ func bind(music_stereo: MusicStereo, visual_director: PSXVisualDirector) -> void
 
 	if _visual_director != null:
 		color_levels = _visual_director.color_levels
-		palette_mix  = _visual_director.palette_mix
+		palette_mix = _visual_director.palette_mix
+		if not _visual_director.visual_style_refreshed.is_connected(_on_visual_style_refreshed):
+			_visual_director.visual_style_refreshed.connect(_on_visual_style_refreshed)
 
 	if _music_stereo != null:
 		_music_stereo.track_changed.connect(_on_track_changed)
@@ -146,9 +148,6 @@ func _blend_out(delta: float) -> void:
 	if _blend_factor <= 0.0:
 		_is_active = false
 		_restore_baseline()
-		if _visual_director != null:
-			_visual_director.clear_music_tint_override()
-			_visual_director.clear_music_shader_override()
 
 
 func _tick_disco(delta: float) -> void:
@@ -250,11 +249,11 @@ func _apply_environment_blend(blend: float, beat_pulse: float) -> void:
 	var fog_t := blend * fog_color_intensity * beat_pulse
 	_environment.fog_light_color = _baseline_fog_color.lerp(boosted, fog_t)
 
-	# Fog density: thicker on peak (the haze itself becomes coloured)
+	# Fog density: subtle pulse so gameplay visibility stays readable at night.
 	_environment.fog_density = lerpf(
 		_baseline_fog_density,
-		_baseline_fog_density * lerpf(0.6, 2.8, beat_pulse),
-		blend * 0.7
+		_baseline_fog_density * lerpf(0.88, 1.35, beat_pulse),
+		blend * 0.32
 	)
 
 	# Ambient light: bathes ALL surfaces in the beat color
@@ -262,7 +261,7 @@ func _apply_environment_blend(blend: float, beat_pulse: float) -> void:
 	_environment.ambient_light_color = _baseline_ambient_color.lerp(boosted, ambient_t)
 	_environment.ambient_light_energy = lerpf(
 		_baseline_ambient_energy,
-		_baseline_ambient_energy * lerpf(0.4, 4.2, beat_pulse),
+		_baseline_ambient_energy * lerpf(0.78, 3.6, beat_pulse),
 		blend
 	)
 
@@ -357,55 +356,30 @@ func _capture_baseline_if_needed() -> void:
 
 
 func _restore_baseline() -> void:
-	for i in _arena_lights.size():
-		var light := _arena_lights[i]
-		if light == null:
-			continue
-		if i < _baseline_arena_colors.size():
-			light.light_color = _baseline_arena_colors[i]
-		if i < _baseline_arena_energies.size():
-			light.light_energy = _baseline_arena_energies[i]
-
-	for i in _window_fill_lights.size():
-		var light := _window_fill_lights[i]
-		if light == null:
-			continue
-		if i < _baseline_fill_colors.size():
-			light.light_color = _baseline_fill_colors[i]
-		if i < _baseline_fill_energies.size():
-			light.light_energy = _baseline_fill_energies[i]
-
-	for i in _panel_materials.size():
-		var mat := _panel_materials[i]
-		if mat == null or not (mat is BaseMaterial3D):
-			continue
-		var bmat := mat as BaseMaterial3D
-		if i < _baseline_panel_emissions.size():
-			bmat.emission = _baseline_panel_emissions[i]
-		bmat.emission_energy_multiplier = 1.45
-
-	if _environment != null:
-		_environment.fog_light_color     = _baseline_fog_color
-		_environment.fog_density         = _baseline_fog_density
-		_environment.ambient_light_color  = _baseline_ambient_color
-		_environment.ambient_light_energy = _baseline_ambient_energy
-		_environment.background_color     = _baseline_bg_color
-
-	for i in _sky_portals.size():
-		var portal := _sky_portals[i]
-		if portal == null:
-			continue
-		var mat := portal.material_override as ShaderMaterial
-		if mat == null:
-			continue
-		if i < _baseline_sky_horizons.size():
-			mat.set_shader_parameter("horizon_color", _baseline_sky_horizons[i])
-		if i < _baseline_sky_tops.size():
-			mat.set_shader_parameter("top_color", _baseline_sky_tops[i])
+	# Delegar cielo/ambiente/luces al preset actual del director visual en lugar de
+	# restaurar valores viejos capturados en otra hora del dia.
+	if _visual_director != null:
+		_visual_director.clear_music_tint_override()
+		_visual_director.clear_music_shader_override()
+		_visual_director.refresh_visual_style()
+	_baseline_captured = false
 
 
 func invalidate_baseline() -> void:
+	refresh_baselines_from_scene()
+
+
+func refresh_baselines_from_scene() -> void:
 	_baseline_captured = false
+	if _visual_director != null and (not _is_active or _blend_factor <= 0.001):
+		_visual_director.clear_music_tint_override()
+		_visual_director.clear_music_shader_override()
+
+
+func _on_visual_style_refreshed(_time_of_day_preset: PSXVisualDirector.TimeOfDayPreset) -> void:
+	refresh_baselines_from_scene()
+	if _is_active and _blend_factor > 0.001:
+		_capture_baseline_if_needed()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

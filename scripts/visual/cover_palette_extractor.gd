@@ -105,6 +105,10 @@ func _psxify(c: Color) -> Color:
 	return Color.from_hsv(h, s, v)
 
 
+func get_fallback_palette() -> PackedColorArray:
+	return _fallback_palette()
+
+
 func _fallback_palette() -> PackedColorArray:
 	var p := PackedColorArray()
 	p.append(Color(0.72, 0.18, 0.18))

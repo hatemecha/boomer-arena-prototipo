@@ -80,6 +80,8 @@ func _ready() -> void:
 		music_panel.visible = false
 	if interaction_hint != null:
 		interaction_hint.visible = false
+	if aim_dot != null:
+		aim_dot.visible = false
 
 
 func bind_player(player: PlayerController) -> void:
@@ -170,19 +172,19 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 
 
 func _process(delta: float) -> void:
-	if fps_label != null:
-		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
-	if position_label != null:
-		position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
-	if speed_label != null:
-		speed_label.text = "%.1f u/s" % _debug_speed
-	var is_aiming: bool = _active_weapon != null and _active_weapon.is_aiming
-	if crosshair != null:
-		crosshair.visible = _crosshair_enabled
+	# Las filas de debug solo se actualizan cuando estan visibles.
+	if _debug_visible:
+		if fps_label != null:
+			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+		if position_label != null:
+			position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
+		if speed_label != null:
+			speed_label.text = "%.1f u/s" % _debug_speed
+	if crosshair != null and _crosshair_enabled:
+		if not crosshair.visible:
+			crosshair.visible = true
 		if crosshair.has_method("set_aiming"):
-			crosshair.call("set_aiming", is_aiming)
-	if aim_dot != null:
-		aim_dot.visible = false
+			crosshair.call("set_aiming", _active_weapon != null and _active_weapon.is_aiming)
 	_update_hologram_lag(delta)
 
 

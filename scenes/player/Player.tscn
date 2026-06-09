@@ -63,6 +63,14 @@ unique_name_in_owner = true
 current = true
 fov = 90.0
 
+[node name="ViewmodelFill" type="OmniLight3D" parent="CameraPivot/PlayerCamera"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.14, -0.08, -0.42)
+light_color = Color(0.56, 0.66, 0.78, 1)
+light_energy = 1.15
+light_indirect_energy = 0.0
+omni_range = 2.8
+shadow_enabled = false
+
 [node name="PhantomCameraHost" type="Node" parent="CameraPivot/PlayerCamera"]
 process_priority = 300
 process_physics_priority = 300

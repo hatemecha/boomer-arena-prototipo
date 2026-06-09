@@ -50,6 +50,7 @@ var _has_spawned_music_stereo: bool = false
 var _selected_time_of_day_preset: int = PSXVisualDirector.TimeOfDayPreset.NIGHT
 
 
+#region Ciclo de vida e input global
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	DefaultInputActions.ensure_default_actions()
@@ -105,8 +106,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("lan_disconnect"):
 		_disconnect_lan()
 		get_viewport().set_input_as_handled()
+#endregion
 
 
+#region API publica de red (armas/pickups llaman aca)
 func request_network_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> bool:
 	if not _is_networked() or multiplayer.is_server():
 		return false
@@ -127,8 +130,10 @@ func request_network_pickup(pickup_id: int, player_id: int) -> bool:
 
 	_server_request_pickup.rpc_id(1, pickup_id, player_id)
 	return true
+#endregion
 
 
+#region Setup de managers, red y lobby
 func _setup_managers() -> void:
 	_spawn_manager = SpawnManager.new()
 	_spawn_manager.name = "SpawnManager"
@@ -229,8 +234,10 @@ func _is_useful_lan_address(address: String) -> bool:
 	if address.begins_with("127.") or address.begins_with("169.254."):
 		return false
 	return true
+#endregion
 
 
+#region Contenido del mundo y ciclo de partida
 func _spawn_world_content() -> void:
 	if not _has_spawned_pickups:
 		_pickup_spawner.spawn_pickups(self)
@@ -244,9 +251,14 @@ func _spawn_world_content() -> void:
 		_has_spawned_music_stereo = true
 
 
-func _start_offline_match() -> void:
+## Limpia jugadores, HUD y mapeos peer<->player. Punto unico de reseteo de sesion.
+func _reset_session() -> void:
 	_clear_players_and_interfaces()
 	_reset_player_maps()
+
+
+func _start_offline_match() -> void:
+	_reset_session()
 	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_match_manager.start_match()
 	_peer_to_player_id[1] = 1
@@ -264,8 +276,7 @@ func _start_network_match_as_server() -> void:
 		push_error("Cannot start a network match without a LAN host.")
 		return
 
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_match_manager.start_match()
 	_register_network_peer(1)
@@ -274,8 +285,7 @@ func _start_network_match_as_server() -> void:
 
 
 func _prepare_client_match() -> void:
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	_match_manager.apply_score_snapshot({}, true)
 	_request_full_sync.rpc_id(1)
 
@@ -286,8 +296,7 @@ func _start_lan_host() -> void:
 
 
 func _start_lan_join() -> void:
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	if not _network_manager.join_game(default_lan_join_address, lan_port):
 		if _is_lobby_visible():
 			_show_lobby("Could not join %s:%d." % [default_lan_join_address, lan_port])
@@ -297,8 +306,7 @@ func _start_lan_join() -> void:
 
 func _disconnect_lan() -> void:
 	_network_manager.disconnect_network()
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	_peer_ping_ms.clear()
 	_local_ping_ms = -1
 	_match_manager.apply_score_snapshot({}, false)
@@ -386,12 +394,6 @@ func _allocate_player_id() -> int:
 		if not _player_id_to_peer.has(candidate_id):
 			_next_player_id = candidate_id + 1
 			return candidate_id
-	while _next_player_id <= max_lan_players:
-		if not _player_id_to_peer.has(_next_player_id):
-			var allocated_id: int = _next_player_id
-			_next_player_id += 1
-			return allocated_id
-		_next_player_id += 1
 	return -1
 
 
@@ -437,8 +439,10 @@ func _register_pickups() -> void:
 		pickup.set_pickup_id(pickup_index)
 		if not pickup.availability_changed.is_connected(_on_pickup_availability_changed):
 			pickup.availability_changed.connect(_on_pickup_availability_changed)
+#endregion
 
 
+#region Spawn de jugadores, HUD y opciones
 func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> PlayerController:
 	var player: PlayerController = _get_player_by_peer_id(peer_id)
 	var is_new_player: bool = player == null
@@ -575,8 +579,10 @@ func _clear_players_and_interfaces() -> void:
 		_options_layer.queue_free()
 	_options_layer = null
 	_options_menu = null
+#endregion
 
 
+#region Sincronizacion de estado y ping
 func _send_local_player_state() -> void:
 	if _player == null or not is_instance_valid(_player):
 		return
@@ -750,8 +756,10 @@ func _apply_player_pickup(pickup_id: int, player_id: int) -> void:
 
 	if pickup.collect_for_player(player):
 		_sync_player_health_to_peers(player)
+#endregion
 
 
+#region Callbacks de juego y red
 func _on_pickup_availability_changed(pickup_id: int, is_available: bool) -> void:
 	if _is_networked() and multiplayer.is_server():
 		_network_set_pickup_available.rpc(pickup_id, is_available)
@@ -854,14 +862,12 @@ func _on_joined_server() -> void:
 
 func _on_network_connection_failed(message: String) -> void:
 	push_warning(message)
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	_show_lobby(message)
 
 
 func _on_server_disconnected() -> void:
-	_clear_players_and_interfaces()
-	_reset_player_maps()
+	_reset_session()
 	_show_lobby("Server disconnected.")
 
 
@@ -979,8 +985,10 @@ func _is_local_peer(peer_id: int) -> bool:
 	if not _is_networked():
 		return peer_id == 1
 	return peer_id == multiplayer.get_unique_id()
+#endregion
 
 
+#region RPCs
 @rpc("authority", "call_local", "reliable")
 func _network_spawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
 	_peer_to_player_id[peer_id] = player_id
@@ -1199,3 +1207,4 @@ func _request_full_sync() -> void:
 	_sync_pickups_to_peer(sender_peer_id)
 	_sync_music_stereo_to_peer(sender_peer_id)
 	_network_sync_score_snapshot.rpc_id(sender_peer_id, _match_manager.get_score_snapshot(), _match_manager.match_running)
+#endregion

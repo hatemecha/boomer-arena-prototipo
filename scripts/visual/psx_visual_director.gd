@@ -15,8 +15,10 @@ enum LensPreset {
 }
 
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
+const EXTERIOR_SUN_LIGHT_NAME: StringName = &"ExteriorSunLight"
 
 signal lens_preset_changed(preset: LensPreset)
+signal visual_style_refreshed(time_of_day_preset: TimeOfDayPreset)
 
 @export var enabled: bool = true
 @export var time_of_day_preset: TimeOfDayPreset = TimeOfDayPreset.NIGHT
@@ -24,6 +26,13 @@ signal lens_preset_changed(preset: LensPreset)
 @export var post_process_enabled: bool = true
 @export var enforce_nearest_filtering: bool = true
 @export var glow_enabled: bool = true
+
+# Post-process base values. Los presets de lente (apply_lens_preset) sobreescriben
+# el grupo "lens". Roles de cada efecto de borde, para no confundirlos:
+# - vignette: oscurece esquinas de forma suave (siempre sutil, gameplay-safe).
+# - circular_mask: recorte duro tipo lente 8mm (solo presets cinematicos).
+# - film_grain: ruido animado de pelicula.
+# - lens_dirt: manchas estaticas en el "vidrio" (apagado por defecto).
 @export_range(0.0, 0.08, 0.005) var dither_strength: float = 0.025
 @export_range(2.0, 16.0, 1.0) var color_levels: float = 6.0
 @export_range(0.0, 1.0, 0.01) var palette_mix: float = 0.55
@@ -48,6 +57,18 @@ var _post_process_rect: ColorRect
 var _post_process_material: ShaderMaterial
 var _nearest_filtering_applied: bool = false
 
+# Cache de nodos de escena. La arena es estatica, asi que se recolecta una sola
+# vez (una unica recursion) en lugar de recorrer todo el arbol en cada refresh.
+var _scene_cache_valid: bool = false
+var _cached_world_environment: WorldEnvironment
+var _cached_main_light: DirectionalLight3D
+var _cached_exterior_light: DirectionalLight3D
+var _cached_arena_lights: Array[OmniLight3D] = []
+var _cached_aisle_fill_lights: Array[OmniLight3D] = []
+var _cached_window_fill_lights: Array[OmniLight3D] = []
+var _cached_sky_portals: Array[MeshInstance3D] = []
+var _cached_light_panels: Array[MeshInstance3D] = []
+
 var _music_tint_color: Color = Color.WHITE
 var _music_tint_strength: float = 0.0
 var _music_color_levels_override: float = -1.0
@@ -60,7 +81,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F6:
+	# F4: ciclo rapido de hora (debug). F6 quedo reservado para lan_host.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F4:
 		cycle_time_of_day_preset()
 
 
@@ -83,12 +105,19 @@ func refresh_visual_style() -> void:
 		return
 
 	_ensure_post_process()
+	_ensure_scene_cache()
 	_apply_environment_preset()
 	_apply_post_process_preset()
 
 	if enforce_nearest_filtering and not _nearest_filtering_applied:
 		_apply_nearest_filtering(get_tree().current_scene)
 		_nearest_filtering_applied = true
+
+	visual_style_refreshed.emit(time_of_day_preset)
+
+
+func invalidate_scene_cache() -> void:
+	_scene_cache_valid = false
 
 
 func set_music_tint_override(color: Color, strength: float) -> void:
@@ -148,23 +177,69 @@ func _set_post_process_visible(value: bool) -> void:
 		_post_process_layer.visible = value
 
 
-func _apply_environment_preset() -> void:
-	var environment_node: WorldEnvironment = _find_world_environment(get_tree().current_scene)
-	var directional_light: DirectionalLight3D = _find_directional_light(get_tree().current_scene)
+func _ensure_scene_cache() -> void:
+	if _scene_cache_valid:
+		return
 
-	if environment_node == null:
+	_cached_world_environment = null
+	_cached_main_light = null
+	_cached_exterior_light = null
+	_cached_arena_lights.clear()
+	_cached_aisle_fill_lights.clear()
+	_cached_window_fill_lights.clear()
+	_cached_sky_portals.clear()
+	_cached_light_panels.clear()
+
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+
+	_collect_scene_nodes(scene_root)
+	_scene_cache_valid = true
+
+
+func _collect_scene_nodes(node: Node) -> void:
+	if node is WorldEnvironment and _cached_world_environment == null:
+		_cached_world_environment = node
+	elif node is DirectionalLight3D:
+		if node.name == EXTERIOR_SUN_LIGHT_NAME:
+			if _cached_exterior_light == null:
+				_cached_exterior_light = node
+		elif _cached_main_light == null:
+			_cached_main_light = node
+	elif node is OmniLight3D:
+		if node.name.begins_with("ArenaLight"):
+			_cached_arena_lights.append(node)
+		elif node.name.begins_with("AisleFill"):
+			_cached_aisle_fill_lights.append(node)
+		elif node.name.begins_with("WindowFill"):
+			_cached_window_fill_lights.append(node)
+	elif node is MeshInstance3D:
+		if node.name.begins_with("SkyPortal"):
+			_cached_sky_portals.append(node)
+		elif node.name.begins_with("LightPanel"):
+			_cached_light_panels.append(node)
+
+	for child in node.get_children():
+		_collect_scene_nodes(child)
+
+
+func _apply_environment_preset() -> void:
+	if _cached_world_environment == null:
 		push_warning("PSXVisualDirector could not find a WorldEnvironment node.")
 	else:
-		if environment_node.environment == null:
-			environment_node.environment = Environment.new()
-		_configure_environment(environment_node.environment)
+		if _cached_world_environment.environment == null:
+			_cached_world_environment.environment = Environment.new()
+		_configure_environment(_cached_world_environment.environment)
 
-	if directional_light == null:
+	if _cached_main_light == null:
 		push_warning("PSXVisualDirector could not find a DirectionalLight3D node.")
 	else:
-		_configure_directional_light(directional_light)
+		_configure_directional_light(_cached_main_light)
 
 	_configure_exterior_light()
+	_configure_arena_lights()
+	_configure_aisle_fill_lights()
 	_configure_window_fill_lights()
 	_configure_sky_portals()
 	_configure_ceiling_light_panels()
@@ -176,9 +251,9 @@ func _configure_environment(environment: Environment) -> void:
 	environment.volumetric_fog_enabled = false
 	environment.glow_enabled = glow_enabled
 	if glow_enabled:
-		environment.glow_intensity = 0.25
-		environment.glow_strength = 0.45
-		environment.glow_bloom = 0.08
+		environment.glow_intensity = 0.28 if time_of_day_preset == TimeOfDayPreset.NIGHT else 0.25
+		environment.glow_strength = 0.48 if time_of_day_preset == TimeOfDayPreset.NIGHT else 0.45
+		environment.glow_bloom = 0.09 if time_of_day_preset == TimeOfDayPreset.NIGHT else 0.06
 		environment.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 		environment.glow_hdr_threshold = 1.05
 		environment.glow_hdr_scale = 1.2
@@ -193,6 +268,7 @@ func _configure_environment(environment: Environment) -> void:
 			environment.ambient_light_color = Color(0.62, 0.72, 0.66)
 			environment.ambient_light_energy = 0.44
 			environment.fog_light_color = Color(0.50, 0.60, 0.55)
+			environment.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 			environment.fog_density = 0.016
 			environment.adjustment_brightness = 0.96
 			environment.adjustment_contrast = 1.10
@@ -202,19 +278,23 @@ func _configure_environment(environment: Environment) -> void:
 			environment.ambient_light_color = Color(0.55, 0.42, 0.34)
 			environment.ambient_light_energy = 0.40
 			environment.fog_light_color = Color(0.40, 0.30, 0.26)
+			environment.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 			environment.fog_density = 0.02
 			environment.adjustment_brightness = 0.94
 			environment.adjustment_contrast = 1.16
 			environment.adjustment_saturation = 0.55
 		TimeOfDayPreset.NIGHT:
 			environment.background_color = Color(0.035, 0.045, 0.05)
-			environment.ambient_light_color = Color(0.32, 0.48, 0.50)
-			environment.ambient_light_energy = 0.42
-			environment.fog_light_color = Color(0.20, 0.30, 0.32)
-			environment.fog_density = 0.024
-			environment.adjustment_brightness = 0.90
-			environment.adjustment_contrast = 1.22
-			environment.adjustment_saturation = 0.50
+			environment.ambient_light_color = Color(0.42, 0.56, 0.58)
+			environment.ambient_light_energy = 0.78
+			environment.fog_light_color = Color(0.24, 0.36, 0.38)
+			environment.fog_mode = Environment.FOG_MODE_DEPTH
+			environment.fog_depth_begin = 22.0
+			environment.fog_depth_end = 52.0
+			environment.fog_density = 0.01
+			environment.adjustment_brightness = 0.98
+			environment.adjustment_contrast = 1.12
+			environment.adjustment_saturation = 0.52
 
 
 func _configure_directional_light(directional_light: DirectionalLight3D) -> void:
@@ -255,8 +335,8 @@ func _apply_post_process_preset() -> void:
 			brightness = -0.04
 		TimeOfDayPreset.NIGHT:
 			tint_color = Color(0.62, 0.78, 0.82)
-			contrast = 1.22
-			brightness = -0.06
+			contrast = 1.12
+			brightness = 0.0
 
 	var effective_color_levels := _music_color_levels_override if _music_color_levels_override > 0.0 else color_levels
 	var effective_palette_mix := _music_palette_mix_override if _music_palette_mix_override >= 0.0 else palette_mix
@@ -369,32 +449,70 @@ func _get_viewport_aspect_ratio() -> float:
 
 
 func _configure_exterior_light() -> void:
-	var exterior_light: DirectionalLight3D = _find_directional_light_by_name(get_tree().current_scene, "ExteriorSunLight")
-	if exterior_light == null:
+	if _cached_exterior_light == null:
 		return
 
-	exterior_light.shadow_enabled = false
+	_cached_exterior_light.shadow_enabled = false
 
 	match time_of_day_preset:
 		TimeOfDayPreset.MORNING:
-			exterior_light.light_color = Color(0.88, 0.92, 1.0)
-			exterior_light.light_energy = 1.15
-			exterior_light.rotation_degrees = Vector3(-68.0, 34.0, 0.0)
+			_cached_exterior_light.light_color = Color(0.88, 0.92, 1.0)
+			_cached_exterior_light.light_energy = 1.15
+			_cached_exterior_light.rotation_degrees = Vector3(-68.0, 34.0, 0.0)
 		TimeOfDayPreset.AFTERNOON:
-			exterior_light.light_color = Color(0.98, 0.78, 0.56)
-			exterior_light.light_energy = 0.95
-			exterior_light.rotation_degrees = Vector3(-38.0, -48.0, 0.0)
+			_cached_exterior_light.light_color = Color(0.98, 0.78, 0.56)
+			_cached_exterior_light.light_energy = 0.95
+			_cached_exterior_light.rotation_degrees = Vector3(-38.0, -48.0, 0.0)
 		TimeOfDayPreset.NIGHT:
-			exterior_light.light_color = Color(0.48, 0.56, 0.86)
-			exterior_light.light_energy = 0.42
-			exterior_light.rotation_degrees = Vector3(-72.0, 16.0, 0.0)
+			_cached_exterior_light.light_color = Color(0.38, 0.46, 0.72)
+			_cached_exterior_light.light_energy = 0.22
+			_cached_exterior_light.rotation_degrees = Vector3(-72.0, 16.0, 0.0)
+
+
+func _configure_arena_lights() -> void:
+	for arena_light in _cached_arena_lights:
+		if arena_light == null or not is_instance_valid(arena_light):
+			continue
+		arena_light.shadow_enabled = false
+		match time_of_day_preset:
+			TimeOfDayPreset.MORNING:
+				arena_light.light_color = Color(0.72, 0.84, 1.0)
+				arena_light.light_energy = 1.35
+				arena_light.omni_range = 16.0
+			TimeOfDayPreset.AFTERNOON:
+				arena_light.light_color = Color(0.94, 0.78, 0.58)
+				arena_light.light_energy = 1.2
+				arena_light.omni_range = 15.0
+			TimeOfDayPreset.NIGHT:
+				arena_light.light_color = Color(0.52, 0.82, 0.92)
+				arena_light.light_energy = 2.85
+				arena_light.omni_range = 26.0
+
+
+func _configure_aisle_fill_lights() -> void:
+	for aisle_light in _cached_aisle_fill_lights:
+		if aisle_light == null or not is_instance_valid(aisle_light):
+			continue
+		aisle_light.shadow_enabled = false
+		match time_of_day_preset:
+			TimeOfDayPreset.MORNING:
+				aisle_light.light_color = Color(0.68, 0.76, 0.88)
+				aisle_light.light_energy = 0.55
+				aisle_light.omni_range = 11.0
+			TimeOfDayPreset.AFTERNOON:
+				aisle_light.light_color = Color(0.88, 0.68, 0.5)
+				aisle_light.light_energy = 0.48
+				aisle_light.omni_range = 10.5
+			TimeOfDayPreset.NIGHT:
+				aisle_light.light_color = Color(0.5, 0.72, 0.82)
+				aisle_light.light_energy = 1.9
+				aisle_light.omni_range = 20.0
 
 
 func _configure_window_fill_lights() -> void:
-	var fill_lights: Array[OmniLight3D] = []
-	_collect_omni_lights_by_prefix(get_tree().current_scene, "WindowFill", fill_lights)
-
-	for fill_light in fill_lights:
+	for fill_light in _cached_window_fill_lights:
+		if fill_light == null or not is_instance_valid(fill_light):
+			continue
 		fill_light.shadow_enabled = false
 		match time_of_day_preset:
 			TimeOfDayPreset.MORNING:
@@ -406,17 +524,16 @@ func _configure_window_fill_lights() -> void:
 				fill_light.light_energy = 1.05
 				fill_light.omni_range = 14.0
 			TimeOfDayPreset.NIGHT:
-				fill_light.light_color = Color(0.42, 0.5, 0.86)
-				fill_light.light_energy = 0.48
-				fill_light.omni_range = 12.0
+				fill_light.light_color = Color(0.48, 0.6, 0.9)
+				fill_light.light_energy = 1.45
+				fill_light.omni_range = 18.0
 
 
 func _configure_sky_portals() -> void:
-	var sky_portals: Array[MeshInstance3D] = []
-	_collect_meshes_by_prefix(get_tree().current_scene, "SkyPortal", sky_portals)
-
-	for sky_portal in sky_portals:
-		var sky_material: ShaderMaterial = sky_portal.material_override as ShaderMaterial
+	for sky_portal in _cached_sky_portals:
+		if sky_portal == null or not is_instance_valid(sky_portal):
+			continue
+		var sky_material: ShaderMaterial = _ensure_unique_sky_material(sky_portal)
 		if sky_material == null:
 			continue
 
@@ -448,10 +565,9 @@ func _configure_sky_portals() -> void:
 
 
 func _configure_ceiling_light_panels() -> void:
-	var light_panels: Array[MeshInstance3D] = []
-	_collect_meshes_by_prefix(get_tree().current_scene, "LightPanel", light_panels)
-
-	for light_panel in light_panels:
+	for light_panel in _cached_light_panels:
+		if light_panel == null or not is_instance_valid(light_panel):
+			continue
 		if light_panel.material_override != null:
 			_configure_light_panel_material(light_panel.material_override)
 
@@ -474,9 +590,28 @@ func _configure_light_panel_material(material: Material) -> void:
 	if material is BaseMaterial3D:
 		var base_material: BaseMaterial3D = material as BaseMaterial3D
 		base_material.emission_enabled = true
-		base_material.emission = Color(0.55, 0.85, 0.78)
-		base_material.emission_energy_multiplier = 1.5 if glow_enabled else 1.0
+		match time_of_day_preset:
+			TimeOfDayPreset.MORNING:
+				base_material.emission = Color(0.62, 0.82, 0.76)
+				base_material.emission_energy_multiplier = 1.35 if glow_enabled else 1.0
+			TimeOfDayPreset.AFTERNOON:
+				base_material.emission = Color(0.82, 0.62, 0.48)
+				base_material.emission_energy_multiplier = 1.4 if glow_enabled else 1.0
+			TimeOfDayPreset.NIGHT:
+				base_material.emission = Color(0.52, 0.82, 0.94)
+				base_material.emission_energy_multiplier = 2.65 if glow_enabled else 1.55
 		base_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+
+
+func _ensure_unique_sky_material(sky_portal: MeshInstance3D) -> ShaderMaterial:
+	var sky_material: ShaderMaterial = sky_portal.material_override as ShaderMaterial
+	if sky_material == null:
+		return null
+	if not sky_portal.has_meta(&"psx_unique_sky_material"):
+		sky_portal.material_override = sky_material.duplicate()
+		sky_portal.set_meta(&"psx_unique_sky_material", true)
+		sky_material = sky_portal.material_override as ShaderMaterial
+	return sky_material
 
 
 func _set_sky_material(
@@ -536,65 +671,3 @@ func _configure_material(material: Material) -> void:
 		base_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		base_material.roughness = 1.0
 		base_material.metallic = 0.0
-
-
-func _find_world_environment(root: Node) -> WorldEnvironment:
-	if root == null:
-		return null
-	if root is WorldEnvironment:
-		return root
-
-	for child in root.get_children():
-		var match_node: WorldEnvironment = _find_world_environment(child)
-		if match_node != null:
-			return match_node
-
-	return null
-
-
-func _find_directional_light(root: Node) -> DirectionalLight3D:
-	if root == null:
-		return null
-	if root is DirectionalLight3D:
-		return root
-
-	for child in root.get_children():
-		var match_node: DirectionalLight3D = _find_directional_light(child)
-		if match_node != null:
-			return match_node
-
-	return null
-
-
-func _find_directional_light_by_name(root: Node, target_name: String) -> DirectionalLight3D:
-	if root == null:
-		return null
-	if root is DirectionalLight3D and root.name == target_name:
-		return root
-
-	for child in root.get_children():
-		var match_node: DirectionalLight3D = _find_directional_light_by_name(child, target_name)
-		if match_node != null:
-			return match_node
-
-	return null
-
-
-func _collect_omni_lights_by_prefix(root: Node, name_prefix: String, output: Array[OmniLight3D]) -> void:
-	if root == null:
-		return
-	if root is OmniLight3D and root.name.begins_with(name_prefix):
-		output.append(root)
-
-	for child in root.get_children():
-		_collect_omni_lights_by_prefix(child, name_prefix, output)
-
-
-func _collect_meshes_by_prefix(root: Node, name_prefix: String, output: Array[MeshInstance3D]) -> void:
-	if root == null:
-		return
-	if root is MeshInstance3D and root.name.begins_with(name_prefix):
-		output.append(root)
-
-	for child in root.get_children():
-		_collect_meshes_by_prefix(child, name_prefix, output)

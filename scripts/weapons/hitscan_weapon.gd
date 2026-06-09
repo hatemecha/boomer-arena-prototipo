@@ -8,7 +8,10 @@ extends WeaponBase
 
 @onready var muzzle_flash: Node = get_node_or_null("MuzzleFlash")
 
+# Pool compartido entre todas las armas hitscan: los marcadores se reutilizan
+# (ocultar/mostrar) en lugar de instanciar y liberar uno por disparo.
 static var _active_impact_markers: Array[MeshInstance3D] = []
+static var _impact_marker_pool: Array[MeshInstance3D] = []
 
 var _impact_material: StandardMaterial3D
 var _impact_mesh: BoxMesh
@@ -92,22 +95,43 @@ func _spawn_impact_marker(world_position: Vector3) -> void:
 
 	_cleanup_invalid_impacts()
 	while _active_impact_markers.size() >= max_active_impacts:
-		var oldest_impact: MeshInstance3D = _active_impact_markers.pop_front()
-		if oldest_impact != null and is_instance_valid(oldest_impact):
-			oldest_impact.queue_free()
+		_release_impact_marker(_active_impact_markers.pop_front())
+
+	var impact: MeshInstance3D = _acquire_impact_marker(scene_root)
+	if impact == null:
+		return
+
+	impact.visible = true
+	impact.global_position = world_position
+	_active_impact_markers.append(impact)
+	await get_tree().create_timer(impact_lifetime).timeout
+	if _active_impact_markers.has(impact):
+		_active_impact_markers.erase(impact)
+		_release_impact_marker(impact)
+
+
+func _acquire_impact_marker(scene_root: Node) -> MeshInstance3D:
+	while not _impact_marker_pool.is_empty():
+		var pooled: MeshInstance3D = _impact_marker_pool.pop_back()
+		if pooled != null and is_instance_valid(pooled) and pooled.get_parent() == scene_root:
+			return pooled
+		# Marcador huerfano de una escena anterior: descartarlo.
+		if pooled != null and is_instance_valid(pooled):
+			pooled.queue_free()
 
 	var impact: MeshInstance3D = MeshInstance3D.new()
 	impact.name = "BulletImpact"
 	impact.mesh = _get_impact_mesh()
 	impact.material_override = _get_impact_material()
-
 	scene_root.add_child(impact)
-	impact.global_position = world_position
-	_active_impact_markers.append(impact)
-	await get_tree().create_timer(impact_lifetime).timeout
-	if is_instance_valid(impact):
-		impact.queue_free()
-	_active_impact_markers.erase(impact)
+	return impact
+
+
+func _release_impact_marker(impact: MeshInstance3D) -> void:
+	if impact == null or not is_instance_valid(impact):
+		return
+	impact.visible = false
+	_impact_marker_pool.append(impact)
 
 
 func _cleanup_invalid_impacts() -> void:
