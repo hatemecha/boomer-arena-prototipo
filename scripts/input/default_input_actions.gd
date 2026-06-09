@@ -20,6 +20,10 @@ static func ensure_default_actions() -> void:
 	_ensure_key_action("lan_host", KEY_F6)
 	_ensure_key_action("lan_join", KEY_F7)
 	_ensure_key_action("lan_disconnect", KEY_F8)
+	_ensure_joy_axis_action("look_left", JOY_AXIS_RIGHT_X, -1.0)
+	_ensure_joy_axis_action("look_right", JOY_AXIS_RIGHT_X, 1.0)
+	_ensure_joy_axis_action("look_up", JOY_AXIS_RIGHT_Y, -1.0)
+	_ensure_joy_axis_action("look_down", JOY_AXIS_RIGHT_Y, 1.0)
 
 
 static func _ensure_key_action(action_name: StringName, physical_keycode: Key) -> void:
@@ -39,6 +43,17 @@ static func _ensure_mouse_action(action_name: StringName, button_index: MouseBut
 
 	var event: InputEventMouseButton = InputEventMouseButton.new()
 	event.button_index = button_index
+	InputMap.action_add_event(action_name, event)
+
+
+static func _ensure_joy_axis_action(action_name: StringName, axis: int, axis_value: float) -> void:
+	_ensure_action(action_name)
+	if not InputMap.action_get_events(action_name).is_empty():
+		return
+
+	var event: InputEventJoypadMotion = InputEventJoypadMotion.new()
+	event.axis = axis
+	event.axis_value = axis_value
 	InputMap.action_add_event(action_name, event)
 
 

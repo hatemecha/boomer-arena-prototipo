@@ -130,7 +130,7 @@ func _sync_controls_from_game() -> void:
 		_update_mouse_sensitivity_label(_player.mouse_sensitivity)
 		_update_fov_label(_player.fov)
 
-	fullscreen_check.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	fullscreen_check.button_pressed = _is_fullscreen_mode()
 	vsync_check.button_pressed = DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED
 	_select_frame_limit(Engine.max_fps)
 
@@ -193,6 +193,20 @@ func _update_mouse_sensitivity_label(value: float) -> void:
 
 func _update_fov_label(value: float) -> void:
 	fov_value.text = "%d" % int(roundf(value))
+
+
+func sync_fullscreen_checkbox() -> void:
+	_is_syncing_controls = true
+	fullscreen_check.button_pressed = _is_fullscreen_mode()
+	_is_syncing_controls = false
+
+
+func _is_fullscreen_mode() -> bool:
+	var mode: int = DisplayServer.window_get_mode()
+	return (
+		mode == DisplayServer.WINDOW_MODE_FULLSCREEN
+		or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	)
 
 
 func _on_fullscreen_toggled(enabled: bool) -> void:

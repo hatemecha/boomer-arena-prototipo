@@ -1,20 +1,26 @@
 class_name HUD
 extends Control
 
-@onready var health_label: Label = $Stats/HealthLabel
-@onready var player_label: Label = $Stats/PlayerLabel if has_node("Stats/PlayerLabel") else null
-@onready var weapon_label: Label = $Stats/WeaponLabel
-@onready var ammo_label: Label = $Stats/AmmoLabel
-@onready var score_label: Label = $Stats/ScoreLabel if has_node("Stats/ScoreLabel") else null
-@onready var match_label: Label = $Stats/MatchLabel if has_node("Stats/MatchLabel") else null
-@onready var network_label: Label = $Stats/NetworkLabel if has_node("Stats/NetworkLabel") else null
-@onready var ping_label: Label = $Stats/PingLabel if has_node("Stats/PingLabel") else null
-@onready var fps_label: Label = $Stats/FpsLabel
-@onready var position_label: Label = $Stats/PositionLabel
-@onready var speed_label: Label = $Stats/SpeedLabel
-@onready var stats: VBoxContainer = $Stats
-@onready var crosshair: Control = $Crosshair
-@onready var aim_dot: ColorRect = $AimDot
+@export var hologram_lag_enabled: bool = true
+@export_range(0.0, 40.0) var hologram_lag_amount: float = 0.018
+@export_range(1.0, 30.0) var hologram_lag_smoothing: float = 10.0
+@export_range(0.0, 20.0) var hologram_velocity_lag_amount: float = 0.15
+@export_range(0.0, 12.0) var hologram_max_offset: float = 5.0
+
+@onready var stats: VBoxContainer = get_node_or_null("Stats") as VBoxContainer
+@onready var health_label: Label = get_node_or_null("Stats/HealthLabel") as Label
+@onready var player_label: Label = get_node_or_null("Stats/PlayerLabel") as Label
+@onready var weapon_label: Label = get_node_or_null("Stats/WeaponLabel") as Label
+@onready var ammo_label: Label = get_node_or_null("Stats/AmmoLabel") as Label
+@onready var score_label: Label = get_node_or_null("Stats/ScoreLabel") as Label
+@onready var match_label: Label = get_node_or_null("Stats/MatchLabel") as Label
+@onready var network_label: Label = get_node_or_null("Stats/NetworkLabel") as Label
+@onready var ping_label: Label = get_node_or_null("Stats/PingLabel") as Label
+@onready var fps_label: Label = get_node_or_null("Stats/FpsLabel") as Label
+@onready var position_label: Label = get_node_or_null("Stats/PositionLabel") as Label
+@onready var speed_label: Label = get_node_or_null("Stats/SpeedLabel") as Label
+@onready var crosshair: Control = get_node_or_null("Crosshair") as Control
+@onready var aim_dot: ColorRect = get_node_or_null("AimDot") as ColorRect
 
 const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(200.0, 100.0)
@@ -34,10 +40,18 @@ var _debug_visible: bool = true
 var _crosshair_enabled: bool = true
 var _match_manager: MatchManager
 var _local_player_id: int = 0
+var _stats_lag_offset: Vector2 = Vector2.ZERO
+var _stats_target_lag_offset: Vector2 = Vector2.ZERO
+var _stats_base_offset_left: float = STATS_DEFAULT_OFFSET.x
+var _stats_base_offset_top: float = STATS_DEFAULT_OFFSET.y
+var _stats_base_offset_right: float = STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x
+var _stats_base_offset_bottom: float = STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+var _hologram_motion_sample_age: float = 999.0
 
 
 func _ready() -> void:
 	_ensure_optional_labels()
+	_capture_stats_base_offsets()
 	set_debug_visible(_debug_visible)
 
 
@@ -45,6 +59,9 @@ func bind_player(player: PlayerController) -> void:
 	if player == null:
 		push_error("HUD cannot bind a null player.")
 		return
+
+	if _player != null and _player.local_view_motion_changed.is_connected(_on_local_view_motion_changed):
+		_player.local_view_motion_changed.disconnect(_on_local_view_motion_changed)
 
 	_player = player
 	_local_player_id = player.player_id
@@ -57,6 +74,8 @@ func bind_player(player: PlayerController) -> void:
 	player.health.health_changed.connect(_on_health_changed)
 	player.debug_stats_changed.connect(_on_debug_stats_changed)
 	player.active_weapon_changed.connect(_on_active_weapon_changed)
+	if not player.local_view_motion_changed.is_connected(_on_local_view_motion_changed):
+		player.local_view_motion_changed.connect(_on_local_view_motion_changed)
 	_on_active_weapon_changed(player.weapon)
 
 	if _active_weapon == null:
@@ -99,7 +118,7 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 		match_label.text = "FIRST TO %d" % _match_manager.score_limit
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if fps_label != null:
 		fps_label.text = "DEBUG FPS: %d" % Engine.get_frames_per_second()
 	if position_label != null:
@@ -113,6 +132,7 @@ func _process(_delta: float) -> void:
 			crosshair.call("set_aiming", is_aiming)
 	if aim_dot != null:
 		aim_dot.visible = false
+	_update_hologram_lag(delta)
 
 
 func set_debug_visible(value: bool) -> void:
@@ -160,20 +180,23 @@ func set_network_stats(status: String, ping_ms: int, peer_count: int) -> void:
 func _on_health_changed(current_health: int, max_health: int) -> void:
 	_health = current_health
 	_max_health = max_health
-	health_label.text = "HEALTH: %d / %d" % [_health, _max_health]
+	if health_label != null:
+		health_label.text = "HEALTH: %d / %d" % [_health, _max_health]
 
 
 func _on_ammo_changed(ammo_in_mag: int, reserve_ammo: int) -> void:
 	_ammo_in_mag = ammo_in_mag
 	_reserve_ammo = reserve_ammo
-	ammo_label.text = "AMMO: %d / %d" % [_ammo_in_mag, _reserve_ammo]
+	if ammo_label != null:
+		ammo_label.text = "AMMO: %d / %d" % [_ammo_in_mag, _reserve_ammo]
 
 
 func _on_weapon_state_changed(state: String) -> void:
 	var weapon_name: String = "NONE"
 	if _active_weapon != null:
 		weapon_name = _active_weapon.weapon_name
-	weapon_label.text = "WEAPON: %s (%s)" % [weapon_name, state]
+	if weapon_label != null:
+		weapon_label.text = "WEAPON: %s (%s)" % [weapon_name, state]
 
 
 func _on_active_weapon_changed(next_weapon: WeaponBase) -> void:
@@ -225,20 +248,82 @@ func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
 
 	if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
 		stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		stats.offset_left = STATS_EXTREME_DEBUG_OFFSET.x
-		stats.offset_top = STATS_EXTREME_DEBUG_OFFSET.y
-		stats.offset_right = STATS_EXTREME_DEBUG_OFFSET.x + STATS_EXTREME_DEBUG_SIZE.x
-		stats.offset_bottom = STATS_EXTREME_DEBUG_OFFSET.y + STATS_EXTREME_DEBUG_SIZE.y
+		_set_stats_base_offsets(
+			STATS_EXTREME_DEBUG_OFFSET.x,
+			STATS_EXTREME_DEBUG_OFFSET.y,
+			STATS_EXTREME_DEBUG_OFFSET.x + STATS_EXTREME_DEBUG_SIZE.x,
+			STATS_EXTREME_DEBUG_OFFSET.y + STATS_EXTREME_DEBUG_SIZE.y
+		)
 		return
 
 	stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	stats.offset_left = STATS_DEFAULT_OFFSET.x
-	stats.offset_top = STATS_DEFAULT_OFFSET.y
-	stats.offset_right = STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x
-	stats.offset_bottom = STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+	_set_stats_base_offsets(
+		STATS_DEFAULT_OFFSET.x,
+		STATS_DEFAULT_OFFSET.y,
+		STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x,
+		STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+	)
+
+
+func _capture_stats_base_offsets() -> void:
+	if stats == null:
+		return
+
+	_stats_base_offset_left = stats.offset_left
+	_stats_base_offset_top = stats.offset_top
+	_stats_base_offset_right = stats.offset_right
+	_stats_base_offset_bottom = stats.offset_bottom
+
+
+func _set_stats_base_offsets(left: float, top: float, right: float, bottom: float) -> void:
+	_stats_base_offset_left = left
+	_stats_base_offset_top = top
+	_stats_base_offset_right = right
+	_stats_base_offset_bottom = bottom
+	_apply_stats_lag_offset()
+
+
+func _on_local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2) -> void:
+	_hologram_motion_sample_age = 0.0
+	if not hologram_lag_enabled:
+		_stats_target_lag_offset = Vector2.ZERO
+		return
+
+	var target_offset: Vector2 = -view_delta * hologram_lag_amount
+	target_offset += local_velocity * hologram_velocity_lag_amount
+	if target_offset.length() > hologram_max_offset:
+		target_offset = target_offset.normalized() * hologram_max_offset
+	_stats_target_lag_offset = target_offset
+
+
+func _update_hologram_lag(delta: float) -> void:
+	if stats == null:
+		return
+
+	_hologram_motion_sample_age += delta
+	var target_offset: Vector2 = _stats_target_lag_offset
+	if not hologram_lag_enabled or _hologram_motion_sample_age > 0.15:
+		target_offset = Vector2.ZERO
+
+	var smoothing_weight: float = 1.0 - exp(-hologram_lag_smoothing * delta)
+	_stats_lag_offset = _stats_lag_offset.lerp(target_offset, smoothing_weight)
+	_apply_stats_lag_offset()
+
+
+func _apply_stats_lag_offset() -> void:
+	if stats == null:
+		return
+
+	stats.offset_left = _stats_base_offset_left + _stats_lag_offset.x
+	stats.offset_top = _stats_base_offset_top + _stats_lag_offset.y
+	stats.offset_right = _stats_base_offset_right + _stats_lag_offset.x
+	stats.offset_bottom = _stats_base_offset_bottom + _stats_lag_offset.y
 
 
 func _ensure_optional_labels() -> void:
+	if stats == null:
+		return
+
 	if player_label == null:
 		player_label = Label.new()
 		player_label.name = "PlayerLabel"

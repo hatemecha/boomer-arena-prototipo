@@ -80,6 +80,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
 		return
 
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F11:
+		_toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+		return
+
 	if event.is_action_pressed("pause"):
 		if _options_menu != null:
 			_options_menu.toggle()
@@ -474,6 +479,26 @@ func _setup_local_hud(player: PlayerController) -> void:
 		hud.bind_visual_director(_visual_director)
 	_hud_player = player
 	_refresh_network_hud()
+
+
+func _toggle_fullscreen() -> void:
+	var enable_fullscreen: bool = not _is_fullscreen_mode()
+	var mode: int = (
+		DisplayServer.WINDOW_MODE_FULLSCREEN
+		if enable_fullscreen
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	)
+	DisplayServer.window_set_mode(mode)
+	if _options_menu != null:
+		_options_menu.sync_fullscreen_checkbox()
+
+
+func _is_fullscreen_mode() -> bool:
+	var mode: int = DisplayServer.window_get_mode()
+	return (
+		mode == DisplayServer.WINDOW_MODE_FULLSCREEN
+		or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	)
 
 
 func _setup_options_menu() -> void:

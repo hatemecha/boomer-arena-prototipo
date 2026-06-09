@@ -7,6 +7,7 @@ signal damaged(amount: int)
 signal died
 signal respawned
 signal weapon_fired(weapon_name: String)
+signal local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2)
 
 @export_range(1.0, 30.0) var walk_speed: float = 7.5
 @export_range(1.0, 40.0) var run_speed: float = 12.5
@@ -25,6 +26,17 @@ signal weapon_fired(weapon_name: String)
 @export var aim_view_offset: Vector3 = Vector3.ZERO
 @export var double_jump_enabled: bool = true
 @export_range(0, 8) var max_air_jumps: int = 1
+@export var wall_jump_enabled: bool = true
+@export_range(0.1, 3.0) var wall_check_distance: float = 0.75
+@export_range(1.0, 30.0) var wall_jump_up_velocity: float = 8.4
+@export_range(1.0, 35.0) var wall_jump_push_velocity: float = 11.0
+@export_range(0.0, 20.0) var wall_jump_forward_boost: float = 2.5
+@export_range(0.0, 1.0) var wall_jump_air_control_lock_time: float = 0.12
+@export_range(0.0, 1.0) var wall_jump_air_control_multiplier: float = 0.25
+@export_range(0.0, 1.0) var wall_jump_cooldown: float = 0.18
+@export_range(0.0, 1.0) var wall_jump_coyote_time: float = 0.12
+@export_range(0.0, 1.0) var wall_jump_min_air_time: float = 0.05
+@export_range(0.0, 1.0) var wall_jump_camera_kick: float = 0.035
 @export var player_id: int = 1
 @export var display_name: String = "Player"
 @export var input_prefix: String = ""
@@ -45,6 +57,16 @@ signal weapon_fired(weapon_name: String)
 @export_range(0.0, 20.0) var run_fov_boost: float = 5.0
 @export_range(1.0, 30.0) var fov_transition_speed: float = 10.0
 @export_range(0.0, 0.2) var landing_camera_dip: float = 0.06
+@export var weapon_motion_enabled: bool = true
+@export_range(0.0, 1.0) var weapon_sway_amount: float = 0.06
+@export_range(0.0, 1.0) var weapon_rotation_sway_amount: float = 0.035
+@export_range(0.0, 1.0) var weapon_movement_sway_amount: float = 0.045
+@export_range(0.1, 3.0) var weapon_run_sway_multiplier: float = 1.45
+@export_range(0.0, 1.0) var weapon_crouch_sway_multiplier: float = 0.45
+@export_range(0.0, 1.0) var weapon_aim_sway_multiplier: float = 0.12
+@export_range(1.0, 30.0) var weapon_sway_smoothing: float = 13.0
+@export_range(0.0, 0.2) var weapon_jump_drop: float = 0.045
+@export_range(0.0, 0.2) var weapon_landing_kick: float = 0.055
 @export var hide_body_for_local_player: bool = true
 
 @onready var camera_pivot: Node3D = $CameraPivot
@@ -85,6 +107,20 @@ var _standing_body_scale: Vector3 = Vector3.ONE
 var _bob_time: float = 0.0
 var _landing_offset: float = 0.0
 var _was_on_floor: bool = false
+var _wall_jump_cooldown_timer: float = 0.0
+var _wall_jump_air_control_lock_timer: float = 0.0
+var _air_time: float = 0.0
+var _last_wall_normal: Vector3 = Vector3.ZERO
+var _last_wall_contact_time: float = -999.0
+var _last_wall_jump_normal: Vector3 = Vector3.ZERO
+var _has_left_wall_since_last_jump: bool = true
+var _wall_jump_camera_kick_offset: Vector3 = Vector3.ZERO
+var _weapon_sway_position: Vector3 = Vector3.ZERO
+var _weapon_sway_rotation: Vector3 = Vector3.ZERO
+var _previous_yaw: float = 0.0
+var _previous_pitch: float = 0.0
+var _weapon_velocity_sway: Vector3 = Vector3.ZERO
+var _last_view_delta: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -96,6 +132,8 @@ func _ready() -> void:
 	_set_active_weapon(0)
 	_update_body_visibility()
 	health.died.connect(_on_health_died)
+	_previous_yaw = rotation.y
+	_previous_pitch = _pitch_degrees
 
 
 func _input(event: InputEvent) -> void:
@@ -110,6 +148,7 @@ func _input(event: InputEvent) -> void:
 		rotate_y(deg_to_rad(-event.relative.x * effective_sensitivity))
 		_pitch_degrees = clampf(_pitch_degrees - event.relative.y * effective_sensitivity, -88.0, 88.0)
 		camera_pivot.rotation_degrees.x = _pitch_degrees
+		_last_view_delta += event.relative
 
 	if event.is_action_pressed(_action("fire")):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -143,6 +182,7 @@ func _physics_process(delta: float) -> void:
 	_handle_movement(delta)
 	if _gameplay_input_enabled:
 		_handle_weapon_input()
+	_emit_local_view_motion()
 	debug_stats_changed.emit(global_position, Vector2(velocity.x, velocity.z).length())
 
 
@@ -208,6 +248,20 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	_network_target_is_crouching = false
 	_crouch_blend = 0.0
 	_landing_offset = 0.0
+	_air_time = 0.0
+	_wall_jump_cooldown_timer = 0.0
+	_wall_jump_air_control_lock_timer = 0.0
+	_last_wall_normal = Vector3.ZERO
+	_last_wall_contact_time = -999.0
+	_last_wall_jump_normal = Vector3.ZERO
+	_has_left_wall_since_last_jump = true
+	_wall_jump_camera_kick_offset = Vector3.ZERO
+	_weapon_sway_position = Vector3.ZERO
+	_weapon_sway_rotation = Vector3.ZERO
+	_weapon_velocity_sway = Vector3.ZERO
+	_previous_yaw = rotation.y
+	_previous_pitch = _pitch_degrees
+	_last_view_delta = Vector2.ZERO
 	_apply_crouch_collision(0.0)
 	health.respawn()
 	_start_respawn_invulnerability()
@@ -297,6 +351,8 @@ func set_body_color(color: Color) -> void:
 func _handle_movement(delta: float) -> void:
 	var was_on_floor_before_move: bool = is_on_floor()
 	var input_direction: Vector2 = _get_move_input()
+	_update_wall_jump_timers(delta, was_on_floor_before_move)
+	var wall_normal: Vector3 = _find_wall_normal()
 	_update_crouch_state()
 	var wants_sprint: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching
 	var target_speed: float = run_speed if wants_sprint else walk_speed
@@ -304,6 +360,8 @@ func _handle_movement(delta: float) -> void:
 		target_speed = crouch_speed
 	var target_velocity: Vector3 = (global_transform.basis * Vector3(input_direction.x, 0.0, input_direction.y)).normalized() * target_speed
 	var acceleration: float = ground_acceleration if is_on_floor() else air_acceleration
+	if not is_on_floor() and _wall_jump_air_control_lock_timer > 0.0:
+		acceleration *= wall_jump_air_control_multiplier
 
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
@@ -317,15 +375,149 @@ func _handle_movement(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, friction * delta)
 		velocity.z = move_toward(velocity.z, 0.0, friction * delta)
 
-	if Input.is_action_just_pressed(_action("jump")) and _can_jump():
-		if not is_on_floor():
-			_air_jumps_used += 1
-		velocity.y = jump_velocity
+	if Input.is_action_just_pressed(_action("jump")):
+		var jump_wall_normal: Vector3 = _get_wall_jump_normal(wall_normal)
+		if _can_wall_jump(jump_wall_normal):
+			_perform_wall_jump(jump_wall_normal)
+		elif _can_jump():
+			if not is_on_floor():
+				_air_jumps_used += 1
+			velocity.y = jump_velocity
 
 	move_and_slide()
 	if not was_on_floor_before_move and is_on_floor():
 		_landing_offset = landing_camera_dip
 	_was_on_floor = is_on_floor()
+
+
+func _update_wall_jump_timers(delta: float, is_on_floor_now: bool) -> void:
+	_wall_jump_cooldown_timer = maxf(_wall_jump_cooldown_timer - delta, 0.0)
+	_wall_jump_air_control_lock_timer = maxf(_wall_jump_air_control_lock_timer - delta, 0.0)
+	if is_on_floor_now:
+		_air_time = 0.0
+		_has_left_wall_since_last_jump = true
+	else:
+		_air_time += delta
+
+
+func _find_wall_normal() -> Vector3:
+	if not wall_jump_enabled or get_world_3d() == null:
+		return Vector3.ZERO
+
+	var basis := global_transform.basis
+	var directions: Array[Vector3] = [
+		-basis.x,
+		basis.x,
+		-basis.z,
+		(-basis.z - basis.x).normalized(),
+		(-basis.z + basis.x).normalized()
+	]
+	var origin: Vector3 = global_position + Vector3.UP * maxf(0.35, _standing_collision_height * 0.55)
+	var direct_space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var best_normal: Vector3 = Vector3.ZERO
+	var best_distance: float = INF
+
+	for direction in directions:
+		if direction.length_squared() <= 0.0001:
+			continue
+
+		var query := PhysicsRayQueryParameters3D.create(origin, origin + direction.normalized() * wall_check_distance)
+		query.exclude = [get_rid()]
+		query.collision_mask = collision_mask
+		query.hit_from_inside = false
+
+		var hit: Dictionary = direct_space_state.intersect_ray(query)
+		if hit.is_empty():
+			continue
+
+		var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+		if normal.length_squared() <= 0.0001 or absf(normal.y) >= 0.35:
+			continue
+
+		var hit_position: Vector3 = hit.get("position", origin)
+		var distance: float = origin.distance_to(hit_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_normal = normal.normalized()
+
+	_update_wall_recontact_state(best_normal)
+	if best_normal != Vector3.ZERO:
+		_last_wall_normal = best_normal
+		_last_wall_contact_time = _get_game_time_seconds()
+	return best_normal
+
+
+func _update_wall_recontact_state(wall_normal: Vector3) -> void:
+	if _last_wall_jump_normal == Vector3.ZERO:
+		return
+	if wall_normal == Vector3.ZERO:
+		_has_left_wall_since_last_jump = true
+		return
+	if wall_normal.normalized().dot(_last_wall_jump_normal.normalized()) < 0.85:
+		_has_left_wall_since_last_jump = true
+
+
+func _get_wall_jump_normal(candidate_normal: Vector3) -> Vector3:
+	if candidate_normal != Vector3.ZERO:
+		return candidate_normal.normalized()
+	if _last_wall_normal == Vector3.ZERO:
+		return Vector3.ZERO
+	if _get_game_time_seconds() - _last_wall_contact_time > wall_jump_coyote_time:
+		return Vector3.ZERO
+	return _last_wall_normal.normalized()
+
+
+func _can_wall_jump(wall_normal: Vector3) -> bool:
+	if not wall_jump_enabled or not _gameplay_input_enabled or _is_dead:
+		return false
+	if is_on_floor() or _air_time < wall_jump_min_air_time:
+		return false
+	if _wall_jump_cooldown_timer > 0.0 or wall_normal == Vector3.ZERO:
+		return false
+	if not _has_left_wall_since_last_jump and _is_same_wall_as_last_jump(wall_normal):
+		return false
+	return true
+
+
+func _perform_wall_jump(wall_normal: Vector3) -> void:
+	var normalized_wall_normal: Vector3 = wall_normal.normalized()
+	var forward: Vector3 = -global_transform.basis.z
+	var current_horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z) * 0.18
+	var push: Vector3 = normalized_wall_normal * wall_jump_push_velocity
+	var forward_boost: Vector3 = forward * wall_jump_forward_boost
+	var next_horizontal_velocity: Vector3 = push + forward_boost + current_horizontal_velocity
+
+	velocity.x = next_horizontal_velocity.x
+	velocity.y = wall_jump_up_velocity
+	velocity.z = next_horizontal_velocity.z
+	_wall_jump_cooldown_timer = wall_jump_cooldown
+	_wall_jump_air_control_lock_timer = wall_jump_air_control_lock_time
+	_air_jumps_used = 0
+	_last_wall_jump_normal = normalized_wall_normal
+	_has_left_wall_since_last_jump = false
+	if _is_crouching and _can_stand_up():
+		_is_crouching = false
+	_apply_wall_jump_camera_kick(normalized_wall_normal)
+
+
+func _is_same_wall_as_last_jump(wall_normal: Vector3) -> bool:
+	return _last_wall_jump_normal != Vector3.ZERO and wall_normal.normalized().dot(_last_wall_jump_normal.normalized()) > 0.85
+
+
+func _apply_wall_jump_camera_kick(wall_normal: Vector3) -> void:
+	if wall_jump_camera_kick <= 0.0:
+		return
+
+	var local_wall_normal: Vector3 = global_transform.basis.inverse() * wall_normal
+	_wall_jump_camera_kick_offset = Vector3(
+		-local_wall_normal.x * wall_jump_camera_kick,
+		wall_jump_camera_kick,
+		0.0
+	)
+
+
+func _get_game_time_seconds() -> float:
+	return float(Time.get_ticks_msec()) / 1000.0
 
 
 func _get_move_input() -> Vector2:
@@ -418,11 +610,25 @@ func _update_camera_motion(delta: float) -> void:
 		_bob_time = 0.0
 
 	_landing_offset = move_toward(_landing_offset, 0.0, delta * 0.45)
-	camera_pivot.position = _standing_camera_pivot_position + bob_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
+	_wall_jump_camera_kick_offset = _wall_jump_camera_kick_offset.move_toward(Vector3.ZERO, delta * maxf(wall_jump_camera_kick * 12.0, 0.05))
+	camera_pivot.position = _standing_camera_pivot_position + bob_offset + _wall_jump_camera_kick_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
 
 
 func _get_horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
+
+
+func _get_local_horizontal_velocity() -> Vector2:
+	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+	return Vector2(local_velocity.x, -local_velocity.z)
+
+
+func _emit_local_view_motion() -> void:
+	if not _is_locally_controlled():
+		return
+
+	local_view_motion_changed.emit(_last_view_delta, _get_local_horizontal_velocity())
+	_last_view_delta = Vector2.ZERO
 
 
 func _handle_weapon_input() -> void:
@@ -454,6 +660,7 @@ func _handle_gamepad_look(delta: float) -> void:
 	rotate_y(-look_direction.x * effective_sensitivity * delta)
 	_pitch_degrees = clampf(_pitch_degrees - look_direction.y * effective_sensitivity * 55.0 * delta, -88.0, 88.0)
 	camera_pivot.rotation_degrees.x = _pitch_degrees
+	_last_view_delta += look_direction * effective_sensitivity * 180.0 * delta
 
 
 func _collect_weapons() -> void:
@@ -494,8 +701,15 @@ func _set_active_weapon(index: int) -> void:
 	if weapon != null and weapon.fired.is_connected(_on_weapon_fired):
 		weapon.fired.disconnect(_on_weapon_fired)
 		weapon.is_aiming = false
+		if _weapon_default_transforms.has(weapon):
+			weapon.transform = _weapon_default_transforms[weapon]
 
 	_aim_blend = 0.0
+	_weapon_sway_position = Vector3.ZERO
+	_weapon_sway_rotation = Vector3.ZERO
+	_weapon_velocity_sway = Vector3.ZERO
+	_previous_yaw = rotation.y
+	_previous_pitch = _pitch_degrees
 	_active_weapon_index = index
 	weapon = _weapons[index]
 	for weapon_index in range(_weapons.size()):
@@ -522,7 +736,71 @@ func _update_aim_state(delta: float) -> void:
 
 	var default_transform: Transform3D = _weapon_default_transforms.get(weapon, weapon.transform)
 	var aim_transform: Transform3D = _build_aim_transform(weapon, default_transform)
-	weapon.transform = default_transform.interpolate_with(aim_transform, _aim_blend)
+	var base_transform: Transform3D = default_transform.interpolate_with(aim_transform, _aim_blend)
+	weapon.transform = _calculate_weapon_motion(delta, base_transform)
+
+
+func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Transform3D:
+	var smoothing_weight: float = 1.0 - exp(-weapon_sway_smoothing * delta)
+	var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _previous_yaw, -PI, PI))
+	var pitch_delta_degrees: float = _pitch_degrees - _previous_pitch
+	_previous_yaw = rotation.y
+	_previous_pitch = _pitch_degrees
+
+	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+	_weapon_velocity_sway = _weapon_velocity_sway.lerp(local_velocity, smoothing_weight)
+
+	var target_position := Vector3.ZERO
+	var target_rotation := Vector3.ZERO
+	if weapon_motion_enabled and _gameplay_input_enabled and not _is_dead:
+		var max_speed: float = maxf(run_speed, 0.001)
+		var strafe_factor: float = clampf(_weapon_velocity_sway.x / max_speed, -1.0, 1.0)
+		var forward_factor: float = clampf(-_weapon_velocity_sway.z / max_speed, -1.0, 1.0)
+		var vertical_factor: float = clampf(absf(velocity.y) / maxf(jump_velocity, 0.001), 0.0, 1.0)
+		var motion_scale: float = _get_weapon_motion_scale()
+
+		target_position.x += -strafe_factor * weapon_movement_sway_amount
+		target_position.z += forward_factor * weapon_movement_sway_amount * (0.75 if forward_factor >= 0.0 else 0.45)
+		target_position.x += yaw_delta_degrees * weapon_sway_amount * 0.018
+		target_position.y += pitch_delta_degrees * weapon_sway_amount * 0.012
+		if forward_factor >= 0.0:
+			target_position.y -= forward_factor * weapon_movement_sway_amount * 0.4
+		else:
+			target_position.y += -forward_factor * weapon_movement_sway_amount * 0.25
+		if not is_on_floor():
+			target_position.y -= weapon_jump_drop * vertical_factor
+		if landing_camera_dip > 0.0 and _landing_offset > 0.0:
+			target_position.y -= weapon_landing_kick * clampf(_landing_offset / landing_camera_dip, 0.0, 1.0)
+
+		target_rotation.x += pitch_delta_degrees * weapon_rotation_sway_amount * 0.22
+		target_rotation.y += -yaw_delta_degrees * weapon_rotation_sway_amount * 0.24
+		target_rotation.z += yaw_delta_degrees * weapon_rotation_sway_amount * 0.35
+		target_rotation.z += -strafe_factor * weapon_rotation_sway_amount * 0.8
+		target_rotation.x += forward_factor * weapon_rotation_sway_amount * 0.35
+
+		target_position *= motion_scale
+		target_rotation *= motion_scale
+		if target_position.length() > 0.16:
+			target_position = target_position.normalized() * 0.16
+		target_rotation.x = clampf(target_rotation.x, -0.18, 0.18)
+		target_rotation.y = clampf(target_rotation.y, -0.16, 0.16)
+		target_rotation.z = clampf(target_rotation.z, -0.18, 0.18)
+
+	_weapon_sway_position = _weapon_sway_position.lerp(target_position, smoothing_weight)
+	_weapon_sway_rotation = _weapon_sway_rotation.lerp(target_rotation, smoothing_weight)
+
+	var motion_basis: Basis = base_transform.basis * Basis.from_euler(_weapon_sway_rotation)
+	var motion_origin: Vector3 = base_transform.origin + base_transform.basis * _weapon_sway_position
+	return Transform3D(motion_basis, motion_origin)
+
+
+func _get_weapon_motion_scale() -> float:
+	var motion_scale: float = 1.0
+	if _should_use_run_fov():
+		motion_scale *= weapon_run_sway_multiplier
+	if _is_crouching:
+		motion_scale *= weapon_crouch_sway_multiplier
+	return lerpf(motion_scale, weapon_aim_sway_multiplier, _aim_blend)
 
 
 func _should_use_run_fov() -> bool:
