@@ -16,7 +16,6 @@ signal damaged(amount: int)
 signal died
 signal respawned
 signal weapon_fired(weapon_name: String)
-signal local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2)
 
 @export_range(1.0, 30.0) var walk_speed: float = 7.5
 @export_range(1.0, 40.0) var run_speed: float = 12.5
@@ -182,6 +181,11 @@ var _previous_yaw: float = 0.0
 var _previous_pitch: float = 0.0
 var _weapon_velocity_sway: Vector3 = Vector3.ZERO
 var _last_view_delta: Vector2 = Vector2.ZERO
+var _hud_motion_strafe: float = 0.0
+var _hud_motion_forward: float = 0.0
+var _hud_motion_look: Vector2 = Vector2.ZERO
+var _prev_hud_sample_yaw: float = 0.0
+var _prev_hud_sample_pitch: float = 0.0
 var _body_motion_time: float = 0.0
 var _body_visual_default_transform: Transform3D = Transform3D.IDENTITY
 var _third_person_weapon_default_transform: Transform3D = Transform3D.IDENTITY
@@ -212,6 +216,8 @@ func _ready() -> void:
 	_previous_yaw = rotation.y
 	_previous_pitch = _pitch_degrees
 	_previous_camera_yaw = rotation.y
+	_prev_hud_sample_yaw = rotation.y
+	_prev_hud_sample_pitch = _pitch_degrees
 	_setup_debug_cameras()
 
 
@@ -254,6 +260,7 @@ func _process(delta: float) -> void:
 	_update_debug_cameras()
 	_update_camera_motion(delta)
 	_update_third_person_visual(delta)
+	_update_hud_motion_sample(delta)
 
 
 func _physics_process(delta: float) -> void:
@@ -267,7 +274,6 @@ func _physics_process(delta: float) -> void:
 	_handle_movement(delta)
 	if _gameplay_input_enabled:
 		_handle_weapon_input()
-	_emit_local_view_motion()
 	debug_stats_changed.emit(global_position, Vector2(velocity.x, velocity.z).length())
 #endregion
 
@@ -375,6 +381,9 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	_camera_roll = 0.0
 	_recoil_pitch_offset = 0.0
 	_last_view_delta = Vector2.ZERO
+	_hud_motion_strafe = 0.0
+	_hud_motion_forward = 0.0
+	_hud_motion_look = Vector2.ZERO
 	_apply_crouch_collision(0.0)
 	health.respawn()
 	_start_respawn_invulnerability()
@@ -1007,17 +1016,40 @@ func _get_horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
 
 
-func _get_local_horizontal_velocity() -> Vector2:
-	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
-	return Vector2(local_velocity.x, -local_velocity.z)
+func get_hud_motion_sample() -> Dictionary:
+	return {
+		"strafe": _hud_motion_strafe,
+		"forward": _hud_motion_forward,
+		"look": _hud_motion_look,
+	}
 
 
-func _emit_local_view_motion() -> void:
-	if not _is_locally_controlled():
+func _update_hud_motion_sample(delta: float) -> void:
+	var decay_weight: float = 1.0 - exp(-14.0 * delta)
+	if not _is_locally_controlled() or _is_dead or not _gameplay_input_enabled:
+		_hud_motion_strafe = lerpf(_hud_motion_strafe, 0.0, decay_weight)
+		_hud_motion_forward = lerpf(_hud_motion_forward, 0.0, decay_weight)
+		_hud_motion_look = _hud_motion_look.lerp(Vector2.ZERO, decay_weight)
 		return
 
-	local_view_motion_changed.emit(_last_view_delta, _get_local_horizontal_velocity())
-	_last_view_delta = Vector2.ZERO
+	var blend_weight: float = 1.0 - exp(-12.0 * delta)
+	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
+	var max_speed: float = maxf(run_speed, 0.001)
+	var on_ground: bool = is_on_floor()
+	var target_strafe: float = clampf(local_velocity.x / max_speed, -1.0, 1.0) if on_ground else 0.0
+	var target_forward: float = clampf(-local_velocity.z / max_speed, -1.0, 1.0) if on_ground else 0.0
+	_hud_motion_strafe = lerpf(_hud_motion_strafe, target_strafe, blend_weight)
+	_hud_motion_forward = lerpf(_hud_motion_forward, target_forward, blend_weight)
+
+	var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _prev_hud_sample_yaw, -PI, PI))
+	var pitch_delta_degrees: float = _pitch_degrees - _prev_hud_sample_pitch
+	_prev_hud_sample_yaw = rotation.y
+	_prev_hud_sample_pitch = _pitch_degrees
+	if absf(yaw_delta_degrees) > 0.001 or absf(pitch_delta_degrees) > 0.001:
+		_hud_motion_look += Vector2(-yaw_delta_degrees, pitch_delta_degrees)
+
+	var look_decay: float = 1.0 - exp(-13.0 * delta)
+	_hud_motion_look = _hud_motion_look.lerp(Vector2.ZERO, look_decay)
 #endregion
 
 

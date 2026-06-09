@@ -1,11 +1,11 @@
 class_name HUD
 extends Control
 
-@export var hologram_lag_enabled: bool = true
-@export_range(0.0, 40.0) var hologram_lag_amount: float = 0.018
-@export_range(1.0, 30.0) var hologram_lag_smoothing: float = 10.0
-@export_range(0.0, 20.0) var hologram_velocity_lag_amount: float = 0.15
-@export_range(0.0, 12.0) var hologram_max_offset: float = 5.0
+@export var hud_motion_enabled: bool = true
+@export_range(0.0, 16.0) var hud_move_sway_px: float = 7.0
+@export_range(0.0, 2.0) var hud_look_sway_px: float = 0.55
+@export_range(1.0, 30.0) var hud_motion_smoothing: float = 15.0
+@export_range(2.0, 18.0) var hud_max_offset_px: float = 9.5
 
 @onready var stats: VBoxContainer = get_node_or_null("Stats") as VBoxContainer
 @onready var health_tag: Label = get_node_or_null("Stats/HealthRow/Tag") as Label
@@ -36,16 +36,16 @@ extends Control
 @onready var music_state_label: Label = get_node_or_null("MusicPanel/Metadata/StateLabel") as Label
 @onready var interaction_hint: Label = get_node_or_null("InteractionHint") as Label
 
-const STATS_DEFAULT_OFFSET: Vector2 = Vector2(54.0, 42.0)
+const STATS_DEFAULT_OFFSET: Vector2 = Vector2(58.0, 44.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
-const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(104.0, 72.0)
+const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(88.0, 58.0)
 const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(220.0, 100.0)
-const MUSIC_PANEL_DEFAULT_TOP: float = 38.0
-const MUSIC_PANEL_DEFAULT_RIGHT_INSET: float = 36.0
+const MUSIC_PANEL_DEFAULT_TOP: float = 36.0
+const MUSIC_PANEL_DEFAULT_RIGHT_INSET: float = 54.0
 const MUSIC_PANEL_DEFAULT_WIDTH: float = 226.0
 const MUSIC_PANEL_DEFAULT_HEIGHT: float = 40.0
-const MUSIC_PANEL_EXTREME_DEBUG_TOP: float = 72.0
-const MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET: float = 86.0
+const MUSIC_PANEL_EXTREME_DEBUG_TOP: float = 50.0
+const MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET: float = 76.0
 const HEALTH_WARN_RATIO: float = 0.3
 
 var _player: PlayerController
@@ -61,19 +61,21 @@ var _debug_visible: bool = false
 var _crosshair_enabled: bool = true
 var _match_manager: MatchManager
 var _local_player_id: int = 0
-var _stats_lag_offset: Vector2 = Vector2.ZERO
-var _stats_target_lag_offset: Vector2 = Vector2.ZERO
-var _stats_base_offset_left: float = STATS_DEFAULT_OFFSET.x
-var _stats_base_offset_top: float = STATS_DEFAULT_OFFSET.y
-var _stats_base_offset_right: float = STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x
-var _stats_base_offset_bottom: float = STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
-var _hologram_motion_sample_age: float = 999.0
+var _hud_motion_offset: Vector2 = Vector2.ZERO
+var _stats_base_offsets: Vector4 = Vector4(
+	STATS_DEFAULT_OFFSET.x,
+	STATS_DEFAULT_OFFSET.y,
+	STATS_DEFAULT_OFFSET.x + STATS_DEFAULT_SIZE.x,
+	STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
+)
+var _music_base_offsets: Vector4 = Vector4.ZERO
 var _music_stereo: MusicStereo
 
 
 func _ready() -> void:
+	process_priority = 1
 	_ensure_optional_labels()
-	_capture_stats_base_offsets()
+	_capture_hud_base_offsets()
 	_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
 	set_debug_visible(_debug_visible)
 	if music_panel != null:
@@ -89,10 +91,8 @@ func bind_player(player: PlayerController) -> void:
 		push_error("HUD cannot bind a null player.")
 		return
 
-	if _player != null and _player.local_view_motion_changed.is_connected(_on_local_view_motion_changed):
-		_player.local_view_motion_changed.disconnect(_on_local_view_motion_changed)
-
 	_player = player
+	process_priority = maxi(player.process_priority + 1, 1)
 	_local_player_id = player.player_id
 	if player_label != null:
 		player_label.text = "%s  P%d" % [player.display_name.to_upper(), player.player_id]
@@ -103,8 +103,6 @@ func bind_player(player: PlayerController) -> void:
 	player.health.health_changed.connect(_on_health_changed)
 	player.debug_stats_changed.connect(_on_debug_stats_changed)
 	player.active_weapon_changed.connect(_on_active_weapon_changed)
-	if not player.local_view_motion_changed.is_connected(_on_local_view_motion_changed):
-		player.local_view_motion_changed.connect(_on_local_view_motion_changed)
 	_on_active_weapon_changed(player.weapon)
 
 	if _active_weapon == null:
@@ -172,7 +170,6 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 
 
 func _process(delta: float) -> void:
-	# Las filas de debug solo se actualizan cuando estan visibles.
 	if _debug_visible:
 		if fps_label != null:
 			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
@@ -185,7 +182,7 @@ func _process(delta: float) -> void:
 			crosshair.visible = true
 		if crosshair.has_method("set_aiming"):
 			crosshair.call("set_aiming", _active_weapon != null and _active_weapon.is_aiming)
-	_update_hologram_lag(delta)
+	_update_hud_motion(delta)
 
 
 func set_debug_visible(value: bool) -> void:
@@ -368,61 +365,68 @@ func _apply_music_panel_layout(top: float, right_inset: float) -> void:
 	music_panel.offset_bottom = top + MUSIC_PANEL_DEFAULT_HEIGHT
 	music_panel.offset_right = -right_inset
 	music_panel.offset_left = -(right_inset + MUSIC_PANEL_DEFAULT_WIDTH)
-
-
-func _capture_stats_base_offsets() -> void:
-	if stats == null:
-		return
-
-	_stats_base_offset_left = stats.offset_left
-	_stats_base_offset_top = stats.offset_top
-	_stats_base_offset_right = stats.offset_right
-	_stats_base_offset_bottom = stats.offset_bottom
+	_music_base_offsets = _read_control_base_offsets(music_panel, _music_base_offsets)
+	_apply_hud_motion()
 
 
 func _set_stats_base_offsets(left: float, top: float, right: float, bottom: float) -> void:
-	_stats_base_offset_left = left
-	_stats_base_offset_top = top
-	_stats_base_offset_right = right
-	_stats_base_offset_bottom = bottom
-	_apply_stats_lag_offset()
+	_stats_base_offsets = Vector4(left, top, right, bottom)
+	_apply_hud_motion()
 
 
-func _on_local_view_motion_changed(view_delta: Vector2, local_velocity: Vector2) -> void:
-	_hologram_motion_sample_age = 0.0
-	if not hologram_lag_enabled:
-		_stats_target_lag_offset = Vector2.ZERO
+func _update_hud_motion(delta: float) -> void:
+	if not hud_motion_enabled or _player == null:
+		_hud_motion_offset = Vector2.ZERO
+		_apply_hud_motion()
 		return
 
-	var target_offset: Vector2 = -view_delta * hologram_lag_amount
-	target_offset += local_velocity * hologram_velocity_lag_amount
-	if target_offset.length() > hologram_max_offset:
-		target_offset = target_offset.normalized() * hologram_max_offset
-	_stats_target_lag_offset = target_offset
+	var sample: Dictionary = _player.get_hud_motion_sample()
+	var strafe: float = sample.get("strafe", 0.0)
+	var forward: float = sample.get("forward", 0.0)
+	var look: Vector2 = sample.get("look", Vector2.ZERO)
+	var target_offset := Vector2(
+		strafe * hud_move_sway_px - look.x * hud_look_sway_px,
+		-forward * hud_move_sway_px * 0.42 - look.y * hud_look_sway_px
+	)
+	if target_offset.length() > hud_max_offset_px:
+		target_offset = target_offset.normalized() * hud_max_offset_px
+
+	var smoothing_weight: float = 1.0 - exp(-hud_motion_smoothing * delta)
+	_hud_motion_offset = _hud_motion_offset.lerp(target_offset, smoothing_weight)
+	_apply_hud_motion()
 
 
-func _update_hologram_lag(delta: float) -> void:
-	if stats == null:
+func _capture_hud_base_offsets() -> void:
+	_stats_base_offsets = _read_control_base_offsets(stats, _stats_base_offsets)
+	_music_base_offsets = _read_control_base_offsets(music_panel, _music_base_offsets)
+
+
+func _read_control_base_offsets(control: Control, fallback: Vector4) -> Vector4:
+	if control == null:
+		return fallback
+
+	return Vector4(
+		control.offset_left,
+		control.offset_top,
+		control.offset_right,
+		control.offset_bottom
+	)
+
+
+func _apply_hud_motion() -> void:
+	_apply_panel_offset(stats, _stats_base_offsets)
+	_apply_panel_offset(music_panel, _music_base_offsets)
+
+
+func _apply_panel_offset(control: Control, base_offsets: Vector4) -> void:
+	if control == null:
 		return
 
-	_hologram_motion_sample_age += delta
-	var target_offset: Vector2 = _stats_target_lag_offset
-	if not hologram_lag_enabled or _hologram_motion_sample_age > 0.15:
-		target_offset = Vector2.ZERO
-
-	var smoothing_weight: float = 1.0 - exp(-hologram_lag_smoothing * delta)
-	_stats_lag_offset = _stats_lag_offset.lerp(target_offset, smoothing_weight)
-	_apply_stats_lag_offset()
-
-
-func _apply_stats_lag_offset() -> void:
-	if stats == null:
-		return
-
-	stats.offset_left = _stats_base_offset_left + _stats_lag_offset.x
-	stats.offset_top = _stats_base_offset_top + _stats_lag_offset.y
-	stats.offset_right = _stats_base_offset_right + _stats_lag_offset.x
-	stats.offset_bottom = _stats_base_offset_bottom + _stats_lag_offset.y
+	control.offset_left = base_offsets.x + _hud_motion_offset.x
+	control.offset_top = base_offsets.y + _hud_motion_offset.y
+	control.offset_right = base_offsets.z + _hud_motion_offset.x
+	control.offset_bottom = base_offsets.w + _hud_motion_offset.y
+	control.rotation = 0.0
 
 
 func _ensure_optional_labels() -> void:
