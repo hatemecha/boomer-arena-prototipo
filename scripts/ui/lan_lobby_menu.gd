@@ -11,6 +11,9 @@ const MAX_PORT: int = 65535
 const TIME_OF_DAY_MORNING: int = 0
 const TIME_OF_DAY_AFTERNOON: int = 1
 const TIME_OF_DAY_NIGHT: int = 2
+const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
+const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
+const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
 
 @onready var status_label: Label = %StatusLabel
 @onready var local_addresses_label: Label = %LocalAddressesLabel
@@ -22,15 +25,26 @@ const TIME_OF_DAY_NIGHT: int = 2
 @onready var practice_button: Button = %PracticeButton
 @onready var disconnect_button: Button = %DisconnectButton
 
+var _menu_motion
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	ArenaMenuBackdropScript.apply(self)
+	ArenaMenuStyleScript.apply_to_menu(self)
+	_menu_motion = ArenaMenuMotionScript.new()
+	_menu_motion.bind(self)
 	host_button.pressed.connect(_on_host_pressed)
 	join_button.pressed.connect(_on_join_pressed)
 	practice_button.pressed.connect(_on_practice_pressed)
 	disconnect_button.pressed.connect(_on_disconnect_pressed)
 	_configure_time_of_day_options()
-	set_status("Select LAN mode.")
+	set_status("Elegí cómo entrar a la arena.")
+
+
+func _process(delta: float) -> void:
+	if _menu_motion != null:
+		_menu_motion.update(delta)
 
 
 func configure(default_address: String, default_port: int, local_addresses: PackedStringArray) -> void:
@@ -53,9 +67,9 @@ func set_local_addresses(local_addresses: PackedStringArray) -> void:
 	if local_addresses_label == null:
 		return
 	if local_addresses.is_empty():
-		local_addresses_label.text = "HOST IP: unavailable"
+		local_addresses_label.text = "IP LOCAL: no disponible"
 	else:
-		local_addresses_label.text = "HOST IP: %s" % ", ".join(local_addresses)
+		local_addresses_label.text = "IP LOCAL: %s" % ", ".join(local_addresses)
 
 
 func set_busy(is_busy: bool) -> void:
@@ -69,16 +83,18 @@ func set_busy(is_busy: bool) -> void:
 
 
 func focus_default() -> void:
+	if _menu_motion != null:
+		_menu_motion.play_open()
 	host_button.grab_focus()
 
 
 func _on_host_pressed() -> void:
 	var port: int = int(port_spin.value)
 	if not _is_valid_port(port):
-		set_status("Invalid port.")
+		set_status("Puerto inválido.")
 		return
 	set_busy(true)
-	set_status("Starting LAN host...")
+	set_status("Abriendo host LAN...")
 	host_requested.emit(port, _get_selected_time_of_day())
 
 
@@ -86,25 +102,25 @@ func _on_join_pressed() -> void:
 	var address: String = address_edit.text.strip_edges()
 	var port: int = int(port_spin.value)
 	if address.is_empty():
-		set_status("Enter host IP.")
+		set_status("Ingresá la IP del host.")
 		return
 	if not _is_valid_port(port):
-		set_status("Invalid port.")
+		set_status("Puerto inválido.")
 		return
 	set_busy(true)
-	set_status("Joining %s:%d..." % [address, port])
+	set_status("Conectando a %s:%d..." % [address, port])
 	join_requested.emit(address, port)
 
 
 func _on_practice_pressed() -> void:
 	set_busy(true)
-	set_status("Starting practice...")
+	set_status("Entrando en práctica...")
 	practice_requested.emit(_get_selected_time_of_day())
 
 
 func _on_disconnect_pressed() -> void:
 	set_busy(false)
-	set_status("Disconnected.")
+	set_status("Desconectado.")
 	disconnect_requested.emit()
 
 
@@ -118,9 +134,9 @@ func _configure_time_of_day_options() -> void:
 	if time_of_day_option.get_item_count() > 0:
 		return
 
-	time_of_day_option.add_item("MORNING", TIME_OF_DAY_MORNING)
-	time_of_day_option.add_item("AFTERNOON", TIME_OF_DAY_AFTERNOON)
-	time_of_day_option.add_item("NIGHT", TIME_OF_DAY_NIGHT)
+	time_of_day_option.add_item("MAÑANA", TIME_OF_DAY_MORNING)
+	time_of_day_option.add_item("TARDE", TIME_OF_DAY_AFTERNOON)
+	time_of_day_option.add_item("NOCHE", TIME_OF_DAY_NIGHT)
 	_select_time_of_day(TIME_OF_DAY_NIGHT)
 
 

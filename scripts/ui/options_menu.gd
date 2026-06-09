@@ -6,6 +6,9 @@ signal respawn_requested
 signal menu_visibility_changed(is_visible: bool)
 
 const FRAME_LIMITS: Array[int] = [0, 30, 60, 120]
+const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
+const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
+const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
 
 @onready var mouse_sensitivity_slider: HSlider = %MouseSensitivitySlider
 @onready var mouse_sensitivity_value: Label = %MouseSensitivityValue
@@ -31,14 +34,24 @@ var _hud: HUD
 var _visual_director: PSXVisualDirector
 var _debug_draw_manager: ArenaDebugDrawManager
 var _is_syncing_controls: bool = false
+var _menu_motion
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
+	ArenaMenuBackdropScript.apply(self)
+	ArenaMenuStyleScript.apply_to_menu(self)
+	_menu_motion = ArenaMenuMotionScript.new()
+	_menu_motion.bind(self)
 	_populate_options()
 	_connect_controls()
 	_configure_dev_buttons()
+
+
+func _process(delta: float) -> void:
+	if _menu_motion != null:
+		_menu_motion.update(delta)
 
 
 func _configure_dev_buttons() -> void:
@@ -78,6 +91,8 @@ func open() -> void:
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	resume_button.grab_focus()
+	if _menu_motion != null:
+		_menu_motion.play_open()
 	menu_visibility_changed.emit(true)
 
 

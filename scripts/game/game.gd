@@ -2,6 +2,7 @@ class_name Game
 extends Node3D
 
 const NetworkManagerScript: GDScript = preload("res://scripts/game/network_manager.gd")
+const ArenaMenuCameraScript: GDScript = preload("res://scripts/ui/arena_menu_camera.gd")
 
 @export var player_scene: PackedScene = preload("res://scenes/player/Player.tscn")
 @export var ammo_pickup_scene: PackedScene = preload("res://scenes/pickups/AmmoPickup.tscn")
@@ -44,6 +45,7 @@ var _peer_ping_ms: Dictionary = {}
 var _network_status_text: String = "OFFLINE"
 var _hud_player: PlayerController
 var _music_stereo: MusicStereo
+var _menu_camera: Camera3D
 var _has_spawned_pickups: bool = false
 var _has_spawned_targets: bool = false
 var _has_spawned_music_stereo: bool = false
@@ -59,6 +61,7 @@ func _ready() -> void:
 	_setup_managers()
 	_spawn_world_content()
 	_setup_network_manager()
+	_setup_menu_camera()
 	_setup_lobby_menu()
 	_debug_draw_manager.bind_context(_spawn_manager, _pickup_spawner, players)
 
@@ -66,7 +69,7 @@ func _ready() -> void:
 	if started_from_args and _network_manager.is_host():
 		_start_network_match_as_server()
 	elif not started_from_args:
-		_show_lobby("Select LAN mode.")
+		_show_lobby("Elegí cómo entrar a la arena.")
 
 
 func _physics_process(delta: float) -> void:
@@ -203,6 +206,7 @@ func _show_lobby(status: String) -> void:
 	_lobby_menu.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
+	_update_menu_presentation()
 	_lobby_menu.focus_default()
 
 
@@ -212,10 +216,40 @@ func _hide_lobby() -> void:
 
 	_lobby_menu.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_update_menu_presentation()
 
 
 func _is_lobby_visible() -> bool:
 	return _lobby_menu != null and bool(_lobby_menu.visible)
+
+
+func _setup_menu_camera() -> void:
+	_menu_camera = ArenaMenuCameraScript.new() as Camera3D
+	_menu_camera.name = "MenuCamera"
+	add_child(_menu_camera)
+
+
+func _is_menu_backdrop_visible() -> bool:
+	if _is_lobby_visible():
+		return true
+	if _options_menu != null and _options_menu.visible:
+		return true
+	return false
+
+
+func _update_menu_presentation() -> void:
+	var menu_open: bool = _is_menu_backdrop_visible()
+	if _menu_camera != null and _menu_camera.has_method("set_menu_active"):
+		_menu_camera.call("set_menu_active", menu_open)
+	if _hud_layer != null:
+		_hud_layer.visible = not menu_open
+	for player in players:
+		if player == null or not is_instance_valid(player):
+			continue
+		if not _is_local_peer(_get_peer_id_for_player(player)):
+			continue
+		if player.camera != null:
+			player.camera.current = not menu_open
 
 
 func _get_lan_addresses() -> PackedStringArray:
@@ -299,7 +333,7 @@ func _start_lan_join() -> void:
 	_reset_session()
 	if not _network_manager.join_game(default_lan_join_address, lan_port):
 		if _is_lobby_visible():
-			_show_lobby("Could not join %s:%d." % [default_lan_join_address, lan_port])
+			_show_lobby("No se pudo unir a %s:%d." % [default_lan_join_address, lan_port])
 		else:
 			_start_offline_match()
 
@@ -310,7 +344,7 @@ func _disconnect_lan() -> void:
 	_peer_ping_ms.clear()
 	_local_ping_ms = -1
 	_match_manager.apply_score_snapshot({}, false)
-	_show_lobby("Disconnected.")
+	_show_lobby("Desconectado.")
 
 
 func _apply_time_of_day_preset(time_of_day_preset: int, should_refresh: bool = true) -> void:
@@ -467,7 +501,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 	var is_local_player: bool = _is_local_peer(peer_id)
 	player.set_local_control_enabled(is_local_player)
 	if player.camera != null:
-		player.camera.current = is_local_player
+		player.camera.current = is_local_player and not _is_menu_backdrop_visible()
 	if player_id == 2:
 		player.set_body_color(Color(0.9, 0.1, 0.08))
 
@@ -797,6 +831,7 @@ func _on_options_respawn_requested() -> void:
 func _on_options_visibility_changed(is_visible: bool) -> void:
 	if _player != null:
 		_player.set_gameplay_input_enabled(not is_visible)
+	_update_menu_presentation()
 
 
 func _on_music_stereo_playback_toggle_requested() -> void:
