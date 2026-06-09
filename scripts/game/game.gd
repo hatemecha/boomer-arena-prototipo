@@ -21,6 +21,7 @@ var players: Array[PlayerController] = []
 
 var _player: PlayerController
 var _huds: Array[HUD] = []
+var _hud_layer: CanvasLayer
 var _options_layer: CanvasLayer
 var _options_menu: OptionsMenu
 var _lobby_layer: CanvasLayer
@@ -42,6 +43,7 @@ var _network_status_text: String = "OFFLINE"
 var _hud_player: PlayerController
 var _has_spawned_pickups: bool = false
 var _has_spawned_targets: bool = false
+var _selected_time_of_day_preset: int = PSXVisualDirector.TimeOfDayPreset.NIGHT
 
 
 func _ready() -> void:
@@ -232,6 +234,7 @@ func _spawn_world_content() -> void:
 func _start_offline_match() -> void:
 	_clear_players_and_interfaces()
 	_reset_player_maps()
+	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_match_manager.start_match()
 	_peer_to_player_id[1] = 1
 	_player_id_to_peer[1] = 1
@@ -250,8 +253,10 @@ func _start_network_match_as_server() -> void:
 
 	_clear_players_and_interfaces()
 	_reset_player_maps()
+	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_match_manager.start_match()
 	_register_network_peer(1)
+	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
 	_sync_score_snapshot_to_peers()
 
 
@@ -287,8 +292,23 @@ func _disconnect_lan() -> void:
 	_show_lobby("Disconnected.")
 
 
-func _on_lobby_host_requested(port: int) -> void:
+func _apply_time_of_day_preset(time_of_day_preset: int, should_refresh: bool = true) -> void:
+	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
+	if _visual_director == null:
+		return
+
+	_visual_director.time_of_day_preset = _selected_time_of_day_preset
+	if should_refresh:
+		_visual_director.refresh_visual_style()
+
+
+func _sanitize_time_of_day_preset(time_of_day_preset: int) -> int:
+	return clampi(time_of_day_preset, 0, PSXVisualDirector.TimeOfDayPreset.size() - 1)
+
+
+func _on_lobby_host_requested(port: int, time_of_day_preset: int) -> void:
 	lan_port = port
+	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
 	_network_manager.configure(lan_port, default_lan_join_address, maxi(max_lan_players - 1, 1))
 	_start_lan_host()
 
@@ -300,7 +320,8 @@ func _on_lobby_join_requested(address: String, port: int) -> void:
 	_start_lan_join()
 
 
-func _on_lobby_practice_requested() -> void:
+func _on_lobby_practice_requested(time_of_day_preset: int) -> void:
+	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
 	_network_manager.disconnect_network(false)
 	_start_offline_match()
 
@@ -338,6 +359,7 @@ func _register_network_peer(peer_id: int) -> void:
 
 	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
 	_network_spawn_player.rpc(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
+	_network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(peer_id)
 	_sync_pickups_to_peer(peer_id)
 	_sync_score_snapshot_to_peers()
@@ -413,7 +435,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 	if is_new_player:
 		player.respawn_at(spawn_position, yaw_radians)
 	else:
-		player.apply_network_state(spawn_position, yaw_radians, player.camera_pivot.rotation_degrees.x, player.velocity, player.health.is_dead)
+		player.apply_network_state(spawn_position, yaw_radians, player.camera_pivot.rotation_degrees.x, player.velocity, player.health.is_dead, false)
 
 	if is_local_player:
 		_player = player
@@ -438,7 +460,13 @@ func _setup_local_hud(player: PlayerController) -> void:
 		push_error("HUD scene must instantiate HUD.")
 		return
 
-	add_child(hud)
+	if _hud_layer == null:
+		_hud_layer = CanvasLayer.new()
+		_hud_layer.name = "HUDLayer"
+		_hud_layer.layer = 100
+		add_child(_hud_layer)
+
+	_hud_layer.add_child(hud)
 	_huds.append(hud)
 	hud.bind_player(player)
 	hud.bind_match(_match_manager, player.player_id)
@@ -480,6 +508,10 @@ func _clear_players_and_interfaces() -> void:
 	_huds.clear()
 	_hud_player = null
 
+	if _hud_layer != null and is_instance_valid(_hud_layer):
+		_hud_layer.queue_free()
+	_hud_layer = null
+
 	if _options_layer != null and is_instance_valid(_options_layer):
 		_options_layer.queue_free()
 	_options_layer = null
@@ -504,7 +536,8 @@ func _send_local_player_state() -> void:
 			_player.rotation.y,
 			_player.camera_pivot.rotation_degrees.x,
 			_player.velocity,
-			_player.health.is_dead
+			_player.health.is_dead,
+			_player.is_crouching()
 		)
 
 
@@ -540,7 +573,8 @@ func _broadcast_player_state(player: PlayerController) -> void:
 		player.rotation.y,
 		player.camera_pivot.rotation_degrees.x,
 		player.velocity,
-		player.health.is_dead
+		player.health.is_dead,
+		player.is_crouching()
 	)
 
 
@@ -551,7 +585,8 @@ func _broadcast_player_state_values(
 	yaw_radians: float,
 	pitch_degrees: float,
 	velocity: Vector3,
-	is_dead_state: bool
+	is_dead_state: bool,
+	is_crouching_state: bool
 ) -> void:
 	_network_receive_player_state.rpc(
 		peer_id,
@@ -560,7 +595,8 @@ func _broadcast_player_state_values(
 		yaw_radians,
 		pitch_degrees,
 		velocity,
-		is_dead_state
+		is_dead_state,
+		is_crouching_state
 	)
 
 
@@ -863,7 +899,8 @@ func _network_receive_player_state(
 	yaw_radians: float,
 	pitch_degrees: float,
 	velocity: Vector3,
-	is_dead_state: bool
+	is_dead_state: bool,
+	is_crouching_state: bool
 ) -> void:
 	if _is_local_peer(peer_id):
 		return
@@ -871,7 +908,7 @@ func _network_receive_player_state(
 	var player: PlayerController = _get_player_by_peer_id(peer_id)
 	if player == null:
 		return
-	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, is_dead_state)
+	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, is_dead_state, is_crouching_state)
 
 
 @rpc("authority", "reliable")
@@ -891,6 +928,11 @@ func _network_sync_player_health(
 @rpc("authority", "reliable")
 func _network_sync_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
 	_match_manager.apply_score_snapshot(snapshot, is_match_running)
+
+
+@rpc("authority", "call_local", "reliable")
+func _network_apply_time_of_day_preset(time_of_day_preset: int) -> void:
+	_apply_time_of_day_preset(time_of_day_preset, true)
 
 
 @rpc("authority", "reliable")
@@ -943,7 +985,8 @@ func _server_receive_player_state(
 	yaw_radians: float,
 	pitch_degrees: float,
 	velocity: Vector3,
-	_is_dead_state: bool
+	_is_dead_state: bool,
+	is_crouching_state: bool
 ) -> void:
 	if not multiplayer.is_server():
 		return
@@ -956,8 +999,8 @@ func _server_receive_player_state(
 	var player: PlayerController = _get_player_by_peer_id(sender_peer_id)
 	if player == null:
 		return
-	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, player.health.is_dead)
-	_broadcast_player_state_values(sender_peer_id, player_id, position, yaw_radians, pitch_degrees, velocity, player.health.is_dead)
+	player.apply_network_state(position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state)
+	_broadcast_player_state_values(sender_peer_id, player_id, position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state)
 
 
 @rpc("any_peer", "reliable")
@@ -1004,6 +1047,7 @@ func _request_full_sync() -> void:
 		return
 
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	_network_apply_time_of_day_preset.rpc_id(sender_peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(sender_peer_id)
 	_sync_pickups_to_peer(sender_peer_id)
 	_network_sync_score_snapshot.rpc_id(sender_peer_id, _match_manager.get_score_snapshot(), _match_manager.match_running)

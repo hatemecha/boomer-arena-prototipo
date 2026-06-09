@@ -1,18 +1,22 @@
 class_name LanLobbyMenu
 extends Control
 
-signal host_requested(port: int)
+signal host_requested(port: int, time_of_day_preset: int)
 signal join_requested(address: String, port: int)
-signal practice_requested
+signal practice_requested(time_of_day_preset: int)
 signal disconnect_requested
 
 const MIN_PORT: int = 1024
 const MAX_PORT: int = 65535
+const TIME_OF_DAY_MORNING: int = 0
+const TIME_OF_DAY_AFTERNOON: int = 1
+const TIME_OF_DAY_NIGHT: int = 2
 
 @onready var status_label: Label = %StatusLabel
 @onready var local_addresses_label: Label = %LocalAddressesLabel
 @onready var address_edit: LineEdit = %AddressEdit
 @onready var port_spin: SpinBox = %PortSpin
+@onready var time_of_day_option: OptionButton = %TimeOfDayOption
 @onready var host_button: Button = %HostButton
 @onready var join_button: Button = %JoinButton
 @onready var practice_button: Button = %PracticeButton
@@ -25,6 +29,7 @@ func _ready() -> void:
 	join_button.pressed.connect(_on_join_pressed)
 	practice_button.pressed.connect(_on_practice_pressed)
 	disconnect_button.pressed.connect(_on_disconnect_pressed)
+	_configure_time_of_day_options()
 	set_status("Select LAN mode.")
 
 
@@ -34,6 +39,7 @@ func configure(default_address: String, default_port: int, local_addresses: Pack
 	port_spin.max_value = MAX_PORT
 	port_spin.step = 1
 	port_spin.value = clampi(default_port, MIN_PORT, MAX_PORT)
+	_select_time_of_day(TIME_OF_DAY_NIGHT)
 	set_local_addresses(local_addresses)
 
 
@@ -58,6 +64,7 @@ func set_busy(is_busy: bool) -> void:
 	practice_button.disabled = is_busy
 	address_edit.editable = not is_busy
 	port_spin.editable = not is_busy
+	time_of_day_option.disabled = is_busy
 	disconnect_button.disabled = not is_busy
 
 
@@ -72,7 +79,7 @@ func _on_host_pressed() -> void:
 		return
 	set_busy(true)
 	set_status("Starting LAN host...")
-	host_requested.emit(port)
+	host_requested.emit(port, _get_selected_time_of_day())
 
 
 func _on_join_pressed() -> void:
@@ -92,7 +99,7 @@ func _on_join_pressed() -> void:
 func _on_practice_pressed() -> void:
 	set_busy(true)
 	set_status("Starting practice...")
-	practice_requested.emit()
+	practice_requested.emit(_get_selected_time_of_day())
 
 
 func _on_disconnect_pressed() -> void:
@@ -103,3 +110,34 @@ func _on_disconnect_pressed() -> void:
 
 func _is_valid_port(port: int) -> bool:
 	return port >= MIN_PORT and port <= MAX_PORT
+
+
+func _configure_time_of_day_options() -> void:
+	if time_of_day_option == null:
+		return
+	if time_of_day_option.get_item_count() > 0:
+		return
+
+	time_of_day_option.add_item("MORNING", TIME_OF_DAY_MORNING)
+	time_of_day_option.add_item("AFTERNOON", TIME_OF_DAY_AFTERNOON)
+	time_of_day_option.add_item("NIGHT", TIME_OF_DAY_NIGHT)
+	_select_time_of_day(TIME_OF_DAY_NIGHT)
+
+
+func _select_time_of_day(preset: int) -> void:
+	if time_of_day_option == null:
+		return
+
+	for item_index in range(time_of_day_option.get_item_count()):
+		if time_of_day_option.get_item_id(item_index) == preset:
+			time_of_day_option.select(item_index)
+			return
+
+
+func _get_selected_time_of_day() -> int:
+	if time_of_day_option == null:
+		return TIME_OF_DAY_NIGHT
+	var selected_id: int = time_of_day_option.get_selected_id()
+	if selected_id < 0:
+		return TIME_OF_DAY_NIGHT
+	return selected_id

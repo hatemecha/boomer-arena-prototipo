@@ -33,11 +33,25 @@ signal weapon_fired(weapon_name: String)
 @export_range(0.0, 5.0) var respawn_invulnerability_time: float = 1.0
 @export_range(1.0, 40.0) var network_interpolation_speed: float = 18.0
 @export_range(0.5, 20.0) var network_snap_distance: float = 6.0
+@export var crouch_enabled: bool = true
+@export_range(0.2, 2.0) var crouch_height_multiplier: float = 0.55
+@export_range(1.0, 20.0) var crouch_speed: float = 4.5
+@export_range(1.0, 30.0) var crouch_transition_speed: float = 12.0
+@export_range(0.0, 1.0) var crouch_camera_drop: float = 0.45
+@export var camera_motion_enabled: bool = true
+@export_range(0.0, 3.0) var walk_bob_amount: float = 0.035
+@export_range(0.0, 3.0) var run_bob_amount: float = 0.065
+@export_range(0.0, 20.0) var bob_frequency: float = 8.0
+@export_range(0.0, 20.0) var run_fov_boost: float = 5.0
+@export_range(1.0, 30.0) var fov_transition_speed: float = 10.0
+@export_range(0.0, 0.2) var landing_camera_dip: float = 0.06
+@export var hide_body_for_local_player: bool = true
 
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/PlayerCamera
 @onready var health: PlayerHealth = $PlayerHealth
 @onready var body_mesh: MeshInstance3D = $BodyMesh
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
 
 var weapon: WeaponBase
 
@@ -59,14 +73,28 @@ var _network_target_position: Vector3 = Vector3.ZERO
 var _network_target_yaw: float = 0.0
 var _network_target_pitch_degrees: float = 0.0
 var _network_target_velocity: Vector3 = Vector3.ZERO
+var _network_target_is_crouching: bool = false
+var _is_crouching: bool = false
+var _crouch_blend: float = 0.0
+var _standing_collision_height: float = 0.0
+var _crouching_collision_height: float = 0.0
+var _standing_collision_position: Vector3 = Vector3.ZERO
+var _standing_camera_pivot_position: Vector3 = Vector3.ZERO
+var _standing_body_position: Vector3 = Vector3.ZERO
+var _standing_body_scale: Vector3 = Vector3.ONE
+var _bob_time: float = 0.0
+var _landing_offset: float = 0.0
+var _was_on_floor: bool = false
 
 
 func _ready() -> void:
 	DefaultInputActions.ensure_default_actions()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.fov = fov
+	_cache_standing_pose()
 	_collect_weapons()
 	_set_active_weapon(0)
+	_update_body_visibility()
 	health.died.connect(_on_health_died)
 
 
@@ -93,12 +121,15 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if not _is_locally_controlled():
 		_update_remote_interpolation(delta)
+		_update_crouch_visual(delta)
 		return
 
 	_is_aiming = _gameplay_input_enabled and not _is_dead and weapon != null and Input.is_action_pressed(_action("aim"))
 	if weapon != null:
 		weapon.is_aiming = _is_aiming
 	_update_aim_state(delta)
+	_update_crouch_visual(delta)
+	_update_camera_motion(delta)
 
 
 func _physics_process(delta: float) -> void:
@@ -124,6 +155,10 @@ func add_ammo(amount: int) -> bool:
 
 func heal(amount: int) -> bool:
 	return health.heal(amount)
+
+
+func is_crouching() -> bool:
+	return _is_crouching
 
 
 func apply_damage(amount: int, attacker_player_id: int = 0) -> void:
@@ -153,6 +188,7 @@ func set_local_control_enabled(value: bool) -> void:
 	_local_control_enabled = value
 	if camera != null:
 		camera.current = value
+	_update_body_visibility()
 	set_gameplay_input_enabled(value)
 
 
@@ -162,10 +198,17 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	velocity = Vector3.ZERO
 	_pitch_degrees = 0.0
 	camera_pivot.rotation_degrees.x = 0.0
+	camera_pivot.position = _standing_camera_pivot_position
+	camera.position = Vector3.ZERO
 	camera.rotation_degrees = Vector3.ZERO
 	_is_dead = false
 	last_damage_source_player_id = 0
 	_air_jumps_used = 0
+	_is_crouching = false
+	_network_target_is_crouching = false
+	_crouch_blend = 0.0
+	_landing_offset = 0.0
+	_apply_crouch_collision(0.0)
 	health.respawn()
 	_start_respawn_invulnerability()
 	respawned.emit()
@@ -176,15 +219,18 @@ func apply_network_state(
 	yaw_radians: float,
 	pitch_degrees: float,
 	next_velocity: Vector3,
-	is_dead_state: bool
+	is_dead_state: bool,
+	is_crouching_state: bool = false
 ) -> void:
 	_network_target_position = next_position
 	_network_target_yaw = yaw_radians
 	_network_target_pitch_degrees = clampf(pitch_degrees, -88.0, 88.0)
 	_network_target_velocity = next_velocity
+	_network_target_is_crouching = is_crouching_state
 	_has_network_target = true
 
 	if not _is_locally_controlled():
+		_is_crouching = is_crouching_state
 		if global_position.distance_to(next_position) > network_snap_distance:
 			_apply_network_state_immediately(next_position, yaw_radians, _network_target_pitch_degrees, next_velocity)
 		if _is_dead != is_dead_state:
@@ -192,6 +238,7 @@ func apply_network_state(
 		return
 
 	_apply_network_state_immediately(next_position, yaw_radians, _network_target_pitch_degrees, next_velocity)
+	_is_crouching = is_crouching_state
 	if _is_dead != is_dead_state:
 		set_dead(is_dead_state)
 
@@ -248,8 +295,13 @@ func set_body_color(color: Color) -> void:
 
 
 func _handle_movement(delta: float) -> void:
+	var was_on_floor_before_move: bool = is_on_floor()
 	var input_direction: Vector2 = _get_move_input()
-	var target_speed: float = run_speed if Input.is_action_pressed(_action("sprint")) else walk_speed
+	_update_crouch_state()
+	var wants_sprint: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching
+	var target_speed: float = run_speed if wants_sprint else walk_speed
+	if _is_crouching:
+		target_speed = crouch_speed
 	var target_velocity: Vector3 = (global_transform.basis * Vector3(input_direction.x, 0.0, input_direction.y)).normalized() * target_speed
 	var acceleration: float = ground_acceleration if is_on_floor() else air_acceleration
 
@@ -271,6 +323,9 @@ func _handle_movement(delta: float) -> void:
 		velocity.y = jump_velocity
 
 	move_and_slide()
+	if not was_on_floor_before_move and is_on_floor():
+		_landing_offset = landing_camera_dip
+	_was_on_floor = is_on_floor()
 
 
 func _get_move_input() -> Vector2:
@@ -281,6 +336,93 @@ func _can_jump() -> bool:
 	if is_on_floor():
 		return true
 	return double_jump_enabled and _air_jumps_used < max_air_jumps
+
+
+func _update_crouch_state() -> void:
+	if not crouch_enabled or not _gameplay_input_enabled:
+		_try_set_crouching(false)
+		return
+
+	_try_set_crouching(Input.is_action_pressed(_action("crouch")))
+
+
+func _try_set_crouching(should_crouch: bool) -> void:
+	if should_crouch:
+		_is_crouching = true
+		return
+
+	if _is_crouching and not _can_stand_up():
+		return
+	_is_crouching = false
+
+
+func _can_stand_up() -> bool:
+	if collision_shape == null or not (collision_shape.shape is CapsuleShape3D):
+		return true
+
+	var standing_shape: CapsuleShape3D = collision_shape.shape.duplicate() as CapsuleShape3D
+	standing_shape.height = _standing_collision_height
+	var clearance_position: Vector3 = _standing_collision_position + Vector3.UP * 0.04
+
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = standing_shape
+	query.transform = global_transform * Transform3D(Basis.IDENTITY, clearance_position)
+	query.exclude = [get_rid()]
+	query.collision_mask = collision_mask
+	query.margin = 0.0
+
+	var hits: Array[Dictionary] = get_world_3d().direct_space_state.intersect_shape(query, 1)
+	return hits.is_empty()
+
+
+func _update_crouch_visual(delta: float) -> void:
+	var target_blend: float = 1.0 if _is_crouching or _network_target_is_crouching else 0.0
+	var transition_weight: float = 1.0 - exp(-crouch_transition_speed * delta)
+	_crouch_blend = lerpf(_crouch_blend, target_blend, transition_weight)
+	_apply_crouch_collision(_crouch_blend)
+
+	if body_mesh != null:
+		body_mesh.position = _standing_body_position.lerp(Vector3(_standing_body_position.x, _standing_body_position.y * crouch_height_multiplier, _standing_body_position.z), _crouch_blend)
+		body_mesh.scale = _standing_body_scale.lerp(Vector3(_standing_body_scale.x, _standing_body_scale.y * crouch_height_multiplier, _standing_body_scale.z), _crouch_blend)
+
+
+func _apply_crouch_collision(blend: float) -> void:
+	if collision_shape == null or not (collision_shape.shape is CapsuleShape3D):
+		return
+
+	var capsule_shape: CapsuleShape3D = collision_shape.shape as CapsuleShape3D
+	capsule_shape.height = lerpf(_standing_collision_height, _crouching_collision_height, blend)
+	collision_shape.position = _standing_collision_position.lerp(
+		Vector3(_standing_collision_position.x, _crouching_collision_height * 0.5, _standing_collision_position.z),
+		blend
+	)
+
+
+func _update_camera_motion(delta: float) -> void:
+	if camera_pivot == null or camera == null:
+		return
+
+	var horizontal_speed: float = _get_horizontal_speed()
+	var is_moving: bool = horizontal_speed > 0.1 and is_on_floor() and _gameplay_input_enabled and not _is_dead
+	var is_running: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching and horizontal_speed > walk_speed + 0.25
+	var crouch_offset: float = crouch_camera_drop * _crouch_blend
+	var bob_offset := Vector3.ZERO
+
+	if camera_motion_enabled and is_moving:
+		var bob_amount: float = run_bob_amount if is_running else walk_bob_amount
+		var frequency: float = bob_frequency * (1.2 if is_running else 1.0)
+		_bob_time += delta * frequency
+		bob_offset.y = sin(_bob_time * TAU) * bob_amount
+		bob_offset.x = cos(_bob_time * TAU * 0.5) * bob_amount * 0.35
+	else:
+		_bob_time = 0.0
+
+	_landing_offset = move_toward(_landing_offset, 0.0, delta * 0.45)
+	camera_pivot.position = _standing_camera_pivot_position + bob_offset - Vector3(0.0, crouch_offset + _landing_offset, 0.0)
+
+
+func _get_horizontal_speed() -> float:
+	return Vector2(velocity.x, velocity.z).length()
 
 
 func _handle_weapon_input() -> void:
@@ -323,6 +465,28 @@ func _collect_weapons() -> void:
 			_weapon_default_transforms[child] = child.transform
 
 
+func _cache_standing_pose() -> void:
+	if camera_pivot != null:
+		_standing_camera_pivot_position = camera_pivot.position
+	if body_mesh != null:
+		_standing_body_position = body_mesh.position
+		_standing_body_scale = body_mesh.scale
+	if collision_shape == null or not (collision_shape.shape is CapsuleShape3D):
+		return
+
+	collision_shape.shape = collision_shape.shape.duplicate()
+	var capsule_shape: CapsuleShape3D = collision_shape.shape as CapsuleShape3D
+	_standing_collision_height = capsule_shape.height
+	_crouching_collision_height = maxf(capsule_shape.radius * 2.0, _standing_collision_height * crouch_height_multiplier)
+	_standing_collision_position = collision_shape.position
+
+
+func _update_body_visibility() -> void:
+	if body_mesh == null:
+		return
+	body_mesh.visible = not (hide_body_for_local_player and _is_locally_controlled())
+
+
 func _set_active_weapon(index: int) -> void:
 	if index < 0 or index >= _weapons.size() or index == _active_weapon_index:
 		return
@@ -348,7 +512,10 @@ func _update_aim_state(delta: float) -> void:
 	var aim_speed: float = aim_enter_speed if _is_aiming else aim_exit_speed
 	var transition_weight: float = 1.0 - exp(-aim_speed * delta)
 	_aim_blend = lerpf(_aim_blend, 1.0 if _is_aiming else 0.0, transition_weight)
-	camera.fov = lerpf(fov, aim_fov, _aim_blend)
+	var movement_fov: float = fov + run_fov_boost if _should_use_run_fov() else fov
+	var target_fov: float = lerpf(movement_fov, aim_fov, _aim_blend)
+	var fov_weight: float = 1.0 - exp(-fov_transition_speed * delta)
+	camera.fov = lerpf(camera.fov, target_fov, fov_weight)
 
 	if weapon == null:
 		return
@@ -356,6 +523,14 @@ func _update_aim_state(delta: float) -> void:
 	var default_transform: Transform3D = _weapon_default_transforms.get(weapon, weapon.transform)
 	var aim_transform: Transform3D = _build_aim_transform(weapon, default_transform)
 	weapon.transform = default_transform.interpolate_with(aim_transform, _aim_blend)
+
+
+func _should_use_run_fov() -> bool:
+	if _is_aiming or _is_crouching or not _gameplay_input_enabled or _is_dead:
+		return false
+	if not Input.is_action_pressed(_action("sprint")):
+		return false
+	return _get_horizontal_speed() > walk_speed + 0.25
 
 
 func _build_aim_transform(active_weapon: WeaponBase, default_transform: Transform3D) -> Transform3D:

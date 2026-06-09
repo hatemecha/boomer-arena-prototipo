@@ -16,6 +16,12 @@ const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 @export_range(0.0, 0.08, 0.005) var dither_strength: float = 0.025
 @export_range(2.0, 16.0, 1.0) var color_levels: float = 6.0
 @export_range(0.0, 1.0, 0.01) var palette_mix: float = 0.42
+@export_range(0.0, 0.2, 0.002) var fisheye_strength: float = 0.06
+@export_range(0.0, 0.02, 0.0005) var chromatic_aberration_strength: float = 0.0018
+@export_range(0.0, 1.0, 0.01) var vignette_strength: float = 0.18
+@export_range(0.2, 1.5, 0.01) var vignette_radius: float = 1.08
+@export_range(0.05, 1.0, 0.01) var vignette_softness: float = 0.72
+@export_range(0.0, 0.5, 0.01) var lens_dirt_strength: float = 0.05
 
 var _post_process_layer: CanvasLayer
 var _post_process_rect: ColorRect
@@ -183,10 +189,24 @@ func _apply_post_process_preset() -> void:
 	_post_process_material.set_shader_parameter("color_levels", color_levels)
 	_post_process_material.set_shader_parameter("dither_strength", dither_strength)
 	_post_process_material.set_shader_parameter("palette_mix", palette_mix)
+	_post_process_material.set_shader_parameter("fisheye_strength", fisheye_strength)
+	_post_process_material.set_shader_parameter("chromatic_aberration_strength", chromatic_aberration_strength)
+	_post_process_material.set_shader_parameter("vignette_strength", vignette_strength)
+	_post_process_material.set_shader_parameter("vignette_radius", vignette_radius)
+	_post_process_material.set_shader_parameter("vignette_softness", vignette_softness)
+	_post_process_material.set_shader_parameter("lens_dirt_strength", lens_dirt_strength)
+	_post_process_material.set_shader_parameter("lens_aspect_ratio", _get_viewport_aspect_ratio())
 	_post_process_material.set_shader_parameter("tint_color", Vector3(tint_color.r, tint_color.g, tint_color.b))
 	_post_process_material.set_shader_parameter("danger_color", Vector3(danger_color.r, danger_color.g, danger_color.b))
 	_post_process_material.set_shader_parameter("contrast", contrast)
 	_post_process_material.set_shader_parameter("brightness", brightness)
+
+
+func _get_viewport_aspect_ratio() -> float:
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	if viewport_size.y <= 0.0:
+		return 1.7778
+	return viewport_size.x / viewport_size.y
 
 
 func _configure_exterior_light() -> void:
