@@ -21,6 +21,7 @@ func _ready() -> void:
 	_configure_exterior_views()
 	_configure_aisle_fill_lights()
 	_configure_industrial_props()
+	_configure_gameplay_markers()
 	_notify_visual_director_scene_changed()
 
 
@@ -192,6 +193,65 @@ func _spawn_prop_scene(
 	prop_root.scale = prop_scale
 	add_child(prop_root)
 	_apply_psx_materials(prop_root, TRIM_MATERIAL)
+
+
+func _configure_gameplay_markers() -> void:
+	if has_node("SpawnPoints"):
+		return
+
+	var spawn_root := Node3D.new()
+	spawn_root.name = "SpawnPoints"
+	add_child(spawn_root)
+
+	var spawn_positions: Array[Vector3] = [
+		Vector3(0.0, 0.0, 11.0),
+		Vector3(0.0, 0.0, -11.0),
+		Vector3(-11.0, 0.0, 0.0),
+		Vector3(11.0, 0.0, 0.0),
+	]
+	var spawn_yaws: Array[float] = [PI, 0.0, PI * 0.5, -PI * 0.5]
+	for index in range(spawn_positions.size()):
+		var marker := Marker3D.new()
+		marker.name = "Spawn%d" % index
+		marker.position = spawn_positions[index]
+		marker.rotation.y = spawn_yaws[index]
+		marker.add_to_group("spawn_points")
+		spawn_root.add_child(marker)
+
+	var camera_root := Node3D.new()
+	camera_root.name = "ArenaCameras"
+	add_child(camera_root)
+
+	var corner_positions: Array[Vector3] = [
+		Vector3(-13.0, 6.5, -13.0),
+		Vector3(13.0, 6.5, -13.0),
+		Vector3(-13.0, 6.5, 13.0),
+		Vector3(13.0, 6.5, 13.0),
+	]
+	for index in range(corner_positions.size()):
+		var camera_marker := Marker3D.new()
+		camera_marker.name = "ArenaCam%d" % index
+		camera_marker.position = corner_positions[index]
+		camera_root.add_child(camera_marker)
+		camera_marker.look_at(Vector3(0.0, 1.2, 0.0), Vector3.UP)
+
+
+func get_best_corner_transform_for_action(action_position: Vector3) -> Transform3D:
+	var camera_root: Node3D = get_node_or_null("ArenaCameras") as Node3D
+	if camera_root == null:
+		return Transform3D(Basis(), action_position + Vector3(8.0, 5.0, 8.0))
+
+	var best_transform: Transform3D = Transform3D(Basis(), action_position + Vector3(8.0, 5.0, 8.0))
+	var best_distance: float = -1.0
+	for child in camera_root.get_children():
+		if not (child is Marker3D):
+			continue
+		var marker: Marker3D = child as Marker3D
+		var distance_squared: float = marker.global_position.distance_squared_to(action_position)
+		if distance_squared > best_distance:
+			best_distance = distance_squared
+			best_transform = marker.global_transform
+	return best_transform
 
 
 func _notify_visual_director_scene_changed() -> void:

@@ -1,16 +1,19 @@
 class_name ArenaMenuStyle
 extends RefCounted
 
-const TAG_TINT: Color = HudIcons.HUD_TAG_TINT
 const VALUE_TINT: Color = HudIcons.HUD_TINT
 const MUTED: Color = Color(0.62, 0.62, 0.56, 1.0)
-const BLOOD: Color = HudIcons.HUD_TAG_TINT
 const BLACK_CLEAR: Color = Color(0.0, 0.0, 0.0, 0.0)
+const TITLE_FONT: FontFile = preload("res://fonts/WO3.ttf")
 
 const TAG_WIDTH: int = 72
 const FONT_SIZE: int = 14
 const TITLE_SIZE: int = 18
 const SECTION_SIZE: int = 13
+
+
+static func _accent() -> Color:
+	return HudIcons.get_tag_tint()
 
 
 static func apply_to_menu(root: Control) -> void:
@@ -55,7 +58,7 @@ static func _style_button(button: Button) -> void:
 	button.add_theme_font_size_override("font_size", FONT_SIZE)
 	button.add_theme_color_override("font_color", VALUE_TINT)
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", BLOOD)
+	button.add_theme_color_override("font_pressed_color", _accent())
 	button.add_theme_color_override("font_disabled_color", Color(0.34, 0.34, 0.31, 0.65))
 	button.add_theme_stylebox_override("normal", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
 	button.add_theme_stylebox_override("hover", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
@@ -76,13 +79,15 @@ static func _style_line_edit(line_edit: LineEdit) -> void:
 	line_edit.add_theme_font_size_override("font_size", FONT_SIZE)
 	line_edit.add_theme_color_override("font_color", VALUE_TINT)
 	line_edit.add_theme_color_override("font_placeholder_color", MUTED)
-	line_edit.add_theme_color_override("caret_color", BLOOD)
+	line_edit.add_theme_color_override("caret_color", _accent())
 	line_edit.add_theme_stylebox_override("normal", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
 	line_edit.add_theme_stylebox_override("focus", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
 	line_edit.add_theme_stylebox_override("read_only", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
 
 
 static func _style_spin_box(spin_box: SpinBox) -> void:
+	spin_box.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	spin_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spin_box.add_theme_font_size_override("font_size", FONT_SIZE)
 	spin_box.add_theme_color_override("font_color", VALUE_TINT)
 	spin_box.add_theme_color_override("font_hover_color", Color.WHITE)
@@ -93,7 +98,7 @@ static func _style_option_button(option_button: OptionButton) -> void:
 	option_button.add_theme_font_size_override("font_size", FONT_SIZE)
 	option_button.add_theme_color_override("font_color", VALUE_TINT)
 	option_button.add_theme_color_override("font_hover_color", Color.WHITE)
-	option_button.add_theme_color_override("font_pressed_color", BLOOD)
+	option_button.add_theme_color_override("font_pressed_color", _accent())
 	option_button.add_theme_color_override("font_disabled_color", MUTED)
 	option_button.add_theme_stylebox_override("normal", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
 	option_button.add_theme_stylebox_override("hover", _stylebox(BLACK_CLEAR, BLACK_CLEAR, 0, 0, 0))
@@ -103,9 +108,13 @@ static func _style_option_button(option_button: OptionButton) -> void:
 
 
 static func _style_slider(slider: HSlider) -> void:
-	slider.add_theme_stylebox_override("slider", _stylebox(Color(0.70, 0.68, 0.58, 0.20), BLACK_CLEAR, 0, 0, 1))
-	slider.add_theme_stylebox_override("grabber_area", _stylebox(Color(0.92, 0.08, 0.035, 0.65), BLACK_CLEAR, 0, 0, 1))
-	slider.add_theme_stylebox_override("grabber_area_highlight", _stylebox(Color(1.0, 0.22, 0.15, 0.9), BLACK_CLEAR, 0, 0, 1))
+	var accent: Color = _accent()
+	var track_bg: Color = Color(0.70, 0.68, 0.58, 0.20)
+	var grabber: Color = Color(accent.r, accent.g, accent.b, 0.65)
+	var grabber_hi: Color = Color(accent.r, accent.g, accent.b, 0.9)
+	slider.add_theme_stylebox_override("slider", _stylebox(track_bg, BLACK_CLEAR, 0, 0, 1))
+	slider.add_theme_stylebox_override("grabber_area", _stylebox(grabber, BLACK_CLEAR, 0, 0, 1))
+	slider.add_theme_stylebox_override("grabber_area_highlight", _stylebox(grabber_hi, BLACK_CLEAR, 0, 0, 1))
 
 
 static func _style_label(label: Label) -> void:
@@ -113,18 +122,19 @@ static func _style_label(label: Label) -> void:
 	label.add_theme_font_size_override("font_size", FONT_SIZE)
 
 	if label.name == "GameTitle":
+		label.add_theme_font_override("font", TITLE_FONT)
 		label.add_theme_font_size_override("font_size", TITLE_SIZE)
-		label.add_theme_color_override("font_color", BLOOD)
+		label.add_theme_color_override("font_color", _accent())
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	elif label.name.contains("Header"):
 		label.add_theme_font_size_override("font_size", SECTION_SIZE)
-		label.add_theme_color_override("font_color", BLOOD)
+		label.add_theme_color_override("font_color", _accent())
 	elif label.name.contains("Status") or label.name.contains("Meta") or label.name == "LocalAddressesLabel":
 		label.add_theme_color_override("font_color", MUTED)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	elif label.name.ends_with("Label") and label.get_parent() is HBoxContainer:
 		label.custom_minimum_size.x = TAG_WIDTH
-		label.add_theme_color_override("font_color", TAG_TINT)
+		label.add_theme_color_override("font_color", _accent())
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	elif label.name.ends_with("Value"):
 		label.add_theme_color_override("font_color", VALUE_TINT)

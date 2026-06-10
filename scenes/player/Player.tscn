@@ -207,6 +207,18 @@ align_transform_with_view = Callable()
 align_position_with_view = Callable()
 align_rotation_with_view = Callable()
 
+[node name="KillCamPCam" type="Node3D" parent="."]
+visible = false
+script = ExtResource("11_pcam_3d")
+priority = 20
+follow_mode = 2
+tween_resource = SubResource("Resource_debug_pcam_tween")
+tween_on_load = false
+follow_offset = Vector3(0.35, 0.8, 0)
+follow_distance = 3.2
+follow_damping = true
+spring_length = 3.2
+
 [node name="PlayerHealth" type="Node" parent="." unique_id=756525158]
 unique_name_in_owner = true
 script = ExtResource("2_health")

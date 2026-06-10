@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/player/player_corpse.gd" id="1_corpse"]
+[ext_resource type="PackedScene" uid="uid://b7prcdw7ebatu" path="res://scenes/player/AmongUsPlayerModel.tscn" id="2_model"]
+
+[node name="PlayerCorpse" type="RigidBody3D"]
+mass = 12.0
+lock_rotation = false
+script = ExtResource("1_corpse")
+
+[node name="BodyMesh" type="Node3D" parent="."]
+
+[node name="AmongUsPlayerModel" parent="BodyMesh" instance=ExtResource("2_model")]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)

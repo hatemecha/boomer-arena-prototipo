@@ -137,11 +137,10 @@ func apply_remote_state(track_index: int, should_play: bool, playback_position: 
 	if player_3d.stream == null:
 		return
 
+	player_3d.stop()
 	if should_play:
 		player_3d.play(maxf(playback_position, 0.0))
-	else:
-		player_3d.play(maxf(playback_position, 0.0))
-		player_3d.stream_paused = true
+		player_3d.stream_paused = false
 	_emit_track_state()
 
 

@@ -35,6 +35,12 @@ extends Control
 @onready var music_artist_label: Label = get_node_or_null("MusicPanel/Metadata/ArtistLabel") as Label
 @onready var music_state_label: Label = get_node_or_null("MusicPanel/Metadata/StateLabel") as Label
 @onready var interaction_hint: Label = get_node_or_null("InteractionHint") as Label
+@onready var match_objective: Label = get_node_or_null("MatchObjective") as Label
+@onready var match_objective_sub: Label = get_node_or_null("MatchObjectiveSub") as Label
+@onready var scoreboard_panel: Control = get_node_or_null("ScoreboardPanel") as Control
+@onready var scoreboard_title: Label = get_node_or_null("ScoreboardPanel/ScoreboardTitle") as Label
+@onready var scoreboard_label: Label = get_node_or_null("ScoreboardPanel/ScoreboardLabel") as Label
+@onready var kill_feed_panel: VBoxContainer = get_node_or_null("KillFeedPanel") as VBoxContainer
 
 const STATS_DEFAULT_OFFSET: Vector2 = Vector2(58.0, 44.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
@@ -69,7 +75,11 @@ var _stats_base_offsets: Vector4 = Vector4(
 	STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
 )
 var _music_base_offsets: Vector4 = Vector4.ZERO
+var _scoreboard_base_offsets: Vector4 = Vector4.ZERO
 var _music_stereo: MusicStereo
+var _kill_feed_entries: Array[Control] = []
+const MAX_KILL_FEED_ENTRIES: int = 5
+const KILL_FEED_LIFETIME: float = 4.0
 
 
 func _ready() -> void:
@@ -80,10 +90,49 @@ func _ready() -> void:
 	set_debug_visible(_debug_visible)
 	if music_panel != null:
 		music_panel.visible = false
+	if scoreboard_panel != null:
+		scoreboard_panel.visible = false
 	if interaction_hint != null:
 		interaction_hint.visible = false
 	if aim_dot != null:
 		aim_dot.visible = false
+	apply_accent_theme()
+	if PlayerSettings != null and not PlayerSettings.settings_changed.is_connected(apply_accent_theme):
+		PlayerSettings.settings_changed.connect(apply_accent_theme)
+
+
+func apply_accent_theme() -> void:
+	var accent: Color = HudIcons.get_tag_tint()
+	_tint_stat_tags(accent)
+	if match_objective != null:
+		match_objective.modulate = accent
+	if scoreboard_title != null:
+		scoreboard_title.modulate = accent
+	if scoreboard_label != null:
+		scoreboard_label.modulate = HudIcons.HUD_TINT
+	if interaction_hint != null:
+		interaction_hint.modulate = accent
+	if aim_dot != null:
+		aim_dot.color = Color(accent.r, accent.g, accent.b, 0.9)
+	if music_state_label != null:
+		music_state_label.modulate = accent
+	_update_health_tint()
+
+
+func reset_motion() -> void:
+	_hud_motion_offset = Vector2.ZERO
+	_apply_hud_motion()
+
+
+func _tint_stat_tags(accent: Color) -> void:
+	if stats == null:
+		return
+	for row in stats.get_children():
+		if not (row is HBoxContainer):
+			continue
+		var tag: Label = row.get_node_or_null("Tag") as Label
+		if tag != null:
+			tag.modulate = accent
 
 
 func bind_player(player: PlayerController) -> void:
@@ -140,7 +189,15 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 		_match_manager.score_changed.connect(_on_score_changed)
 	if not _match_manager.match_finished.is_connected(_on_match_finished):
 		_match_manager.match_finished.connect(_on_match_finished)
+	if not _match_manager.time_changed.is_connected(_on_match_time_changed):
+		_match_manager.time_changed.connect(_on_match_time_changed)
+	if not _match_manager.kill_feed_event.is_connected(_on_kill_feed_event):
+		_match_manager.kill_feed_event.connect(_on_kill_feed_event)
+	if not _match_manager.match_started.is_connected(_on_match_started):
+		_match_manager.match_started.connect(_on_match_started)
+	_set_match_widgets_visible(_match_manager.match_running)
 	_refresh_score_label()
+	_refresh_match_objective()
 	if match_label != null:
 		match_label.text = "PRIMERO A %d BAJAS" % _match_manager.score_limit
 
@@ -284,12 +341,126 @@ func _on_debug_stats_changed(world_position: Vector3, speed: float) -> void:
 
 func _on_score_changed(_player_id: int, _kills: int, _deaths: int) -> void:
 	_refresh_score_label()
+	_refresh_match_objective()
 
 
-func _on_match_finished(winner_id: int) -> void:
-	if match_label == null:
+func set_crosshair_style(index: int) -> void:
+	if crosshair == null:
 		return
-	match_label.text = "P%d GANA" % winner_id
+	if crosshair.has_method("set_crosshair_index"):
+		crosshair.call("set_crosshair_index", index)
+	elif crosshair.has_method("set_crosshair_index"):
+		crosshair.call("set_crosshair_index", index)
+
+
+func rebuild_crosshair(use_sprite: bool, crosshair_index: int) -> void:
+	if crosshair != null:
+		crosshair.queue_free()
+		crosshair = null
+
+	var crosshair_script: Script
+	if use_sprite and crosshair_index >= 0:
+		crosshair_script = preload("res://scripts/ui/sprite_crosshair.gd")
+	else:
+		crosshair_script = preload("res://scripts/ui/circular_crosshair.gd")
+
+	crosshair = Control.new()
+	crosshair.name = "Crosshair"
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.set_anchors_preset(Control.PRESET_CENTER)
+	crosshair.offset_left = -17.0
+	crosshair.offset_top = -17.0
+	crosshair.offset_right = 17.0
+	crosshair.offset_bottom = 17.0
+	crosshair.set_script(crosshair_script)
+	add_child(crosshair)
+	if use_sprite and crosshair.has_method("set_crosshair_index"):
+		crosshair.call("set_crosshair_index", crosshair_index)
+	set_crosshair_enabled(_crosshair_enabled)
+
+
+func _on_match_started() -> void:
+	_set_match_widgets_visible(true)
+	_refresh_match_objective()
+
+
+func _on_match_finished(_winner_id: int) -> void:
+	_set_match_widgets_visible(false)
+
+
+func _set_match_widgets_visible(is_visible: bool) -> void:
+	if match_objective != null:
+		match_objective.visible = is_visible
+	if match_objective_sub != null:
+		match_objective_sub.visible = is_visible
+	if scoreboard_panel != null:
+		scoreboard_panel.visible = is_visible
+	if match_label != null:
+		match_label.visible = is_visible
+
+
+func _on_match_time_changed(_remaining_seconds: float) -> void:
+	_refresh_match_objective()
+
+
+func _on_kill_feed_event(killer_name: String, victim_name: String, killer_id: int, _victim_id: int) -> void:
+	add_kill_feed_entry(killer_name, victim_name, killer_id)
+
+
+func add_kill_feed_entry(killer_name: String, victim_name: String, killer_id: int = 0) -> void:
+	if kill_feed_panel == null:
+		return
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+
+	var tag := Label.new()
+	tag.custom_minimum_size = Vector2(72.0, 16.0)
+	tag.text = "KILL"
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tag.add_theme_font_size_override("font_size", 14)
+	tag.modulate = HudIcons.get_tag_tint()
+
+	var entry := Label.new()
+	entry.text = "%s → %s" % [killer_name.to_upper(), victim_name.to_upper()]
+	entry.add_theme_font_size_override("font_size", 14)
+	entry.modulate = HudIcons.get_accent_color() if killer_id == _local_player_id else HudIcons.HUD_TINT
+
+	row.add_child(tag)
+	row.add_child(entry)
+	kill_feed_panel.add_child(row)
+	_kill_feed_entries.append(row)
+
+	while _kill_feed_entries.size() > MAX_KILL_FEED_ENTRIES:
+		var oldest: Control = _kill_feed_entries.pop_front()
+		if is_instance_valid(oldest):
+			oldest.queue_free()
+
+	var tween := create_tween()
+	tween.tween_interval(KILL_FEED_LIFETIME)
+	tween.tween_property(row, "modulate:a", 0.0, 0.35)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(row):
+			_kill_feed_entries.erase(row)
+			row.queue_free()
+	)
+
+
+func _refresh_match_objective() -> void:
+	if _match_manager == null:
+		return
+	if match_objective == null:
+		return
+
+	if _match_manager.win_mode == MatchManager.WinMode.TIME_LIMIT:
+		match_objective.text = _match_manager.format_time_remaining()
+		if match_objective_sub != null:
+			match_objective_sub.text = ""
+	else:
+		match_objective.text = "PRIMERO A %d" % _match_manager.score_limit
+		if match_objective_sub != null:
+			match_objective_sub.text = ""
+	_refresh_scoreboard()
 
 
 func _refresh_score_label() -> void:
@@ -297,6 +468,24 @@ func _refresh_score_label() -> void:
 		return
 
 	score_label.text = _match_manager.format_score_line()
+	_refresh_scoreboard()
+
+
+func _refresh_scoreboard() -> void:
+	if scoreboard_label == null or _match_manager == null:
+		return
+
+	var player_ids: Array = _match_manager.scores.keys()
+	player_ids.sort()
+	var parts: Array[String] = []
+	for raw_player_id in player_ids:
+		var player_id: int = int(raw_player_id)
+		var player_name: String = _match_manager.get_player_name(player_id).strip_edges()
+		if player_name.is_empty():
+			player_name = "P%d" % player_id
+		var prefix: String = ">" if player_id == _local_player_id else " "
+		parts.append("%s %s  %d" % [prefix, player_name.to_upper(), _match_manager.get_kills(player_id)])
+	scoreboard_label.text = "\n".join(parts)
 
 
 func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
@@ -399,6 +588,7 @@ func _update_hud_motion(delta: float) -> void:
 func _capture_hud_base_offsets() -> void:
 	_stats_base_offsets = _read_control_base_offsets(stats, _stats_base_offsets)
 	_music_base_offsets = _read_control_base_offsets(music_panel, _music_base_offsets)
+	_scoreboard_base_offsets = _read_control_base_offsets(scoreboard_panel, _scoreboard_base_offsets)
 
 
 func _read_control_base_offsets(control: Control, fallback: Vector4) -> Vector4:
@@ -416,6 +606,7 @@ func _read_control_base_offsets(control: Control, fallback: Vector4) -> Vector4:
 func _apply_hud_motion() -> void:
 	_apply_panel_offset(stats, _stats_base_offsets)
 	_apply_panel_offset(music_panel, _music_base_offsets)
+	_apply_panel_offset(scoreboard_panel, _scoreboard_base_offsets)
 
 
 func _apply_panel_offset(control: Control, base_offsets: Vector4) -> void:
@@ -464,6 +655,6 @@ func _update_health_tint() -> void:
 		return
 
 	var health_ratio: float = float(_health) / float(_max_health)
-	health_tag.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TAG_TINT
+	health_tag.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.get_tag_tint()
 	if health_label != null:
 		health_label.modulate = HudIcons.HUD_WARN_TINT if health_ratio <= HEALTH_WARN_RATIO else HudIcons.HUD_TINT

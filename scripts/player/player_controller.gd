@@ -131,8 +131,11 @@ var _active_weapon_index: int = -1
 var _is_dead: bool = false
 var _gameplay_input_enabled: bool = true
 var _local_control_enabled: bool = true
+var _cinematic_view_active: bool = false
 var _is_invulnerable: bool = false
 var last_damage_source_player_id: int = 0
+var last_killer_position: Vector3 = Vector3.ZERO
+var _body_color: Color = Color(0.78, 0.82, 0.88)
 var _is_aiming: bool = false
 var _aim_blend: float = 0.0
 var _has_network_target: bool = false
@@ -195,6 +198,11 @@ var _limb_rest_rotations: Dictionary = {}
 var _debug_camera_mode: DebugCameraMode = DebugCameraMode.FIRST_PERSON
 var _third_back_pcam: PhantomCamera3D
 var _third_front_pcam: PhantomCamera3D
+var _kill_cam_pcam: PhantomCamera3D
+const _KILL_CAM_PRIORITY: int = 20
+const _KILL_CAM_DURATION: float = 1.5
+var _kill_cam_active: bool = false
+var respawn_generation: int = 0
 var _third_person_camera_initialized: bool = false
 var _third_person_camera_position: Vector3 = Vector3.ZERO
 
@@ -202,7 +210,6 @@ var _third_person_camera_position: Vector3 = Vector3.ZERO
 #region Ciclo de vida e input
 func _ready() -> void:
 	DefaultInputActions.ensure_default_actions()
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.fov = fov
 	_cache_standing_pose()
 	_cache_third_person_weapon_rig()
@@ -252,6 +259,7 @@ func _process(delta: float) -> void:
 		_update_third_person_visual(delta)
 		return
 
+	_ensure_first_person_camera_attached()
 	_is_aiming = _gameplay_input_enabled and not _is_dead and weapon != null and Input.is_action_pressed(_action("aim"))
 	if weapon != null:
 		weapon.is_aiming = _is_aiming
@@ -342,7 +350,9 @@ func set_local_control_enabled(value: bool) -> void:
 
 
 func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
-	global_position = spawn_position
+	cancel_kill_cam()
+	respawn_generation += 1
+	global_position = _snap_spawn_position(spawn_position)
 	rotation.y = yaw_radians
 	velocity = Vector3.ZERO
 	_pitch_degrees = 0.0
@@ -350,8 +360,10 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	camera_pivot.position = _standing_camera_pivot_position
 	camera.position = Vector3.ZERO
 	camera.rotation_degrees = Vector3.ZERO
-	_is_dead = false
+	_restore_first_person_camera()
+	set_dead(false)
 	last_damage_source_player_id = 0
+	last_killer_position = Vector3.ZERO
 	_air_jumps_used = 0
 	_is_crouching = false
 	_network_target_is_crouching = false
@@ -437,9 +449,19 @@ func apply_network_health(
 	current_health: int,
 	max_health: int,
 	is_dead_state: bool,
-	damage_source_player_id: int = 0
+	damage_source_player_id: int = 0,
+	network_respawn_generation: int = -1
 ) -> void:
 	if health == null:
+		return
+	if network_respawn_generation >= 0 and network_respawn_generation < respawn_generation:
+		return
+	if (
+		is_dead_state
+		and _is_locally_controlled()
+		and not _is_dead
+		and current_health > 0
+	):
 		return
 
 	health.max_health = maxi(max_health, 1)
@@ -471,10 +493,73 @@ func set_dead(value: bool) -> void:
 	if weapon != null:
 		weapon.is_aiming = false
 	velocity = Vector3.ZERO
-	_update_third_person_weapon_visibility()
+	if collision_shape != null:
+		collision_shape.disabled = value
+	_update_body_visibility()
+	if _is_locally_controlled():
+		_update_first_person_weapon_visibility()
+
+
+func get_body_color() -> Color:
+	return _body_color
+
+
+func cancel_kill_cam() -> void:
+	_kill_cam_active = false
+	if _kill_cam_pcam != null:
+		_kill_cam_pcam.set_priority(0)
+		_kill_cam_pcam.visible = false
+		_kill_cam_pcam.follow_target = null
+	if _phantom_camera_host != null:
+		_phantom_camera_host.process_mode = Node.PROCESS_MODE_DISABLED
+	_restore_first_person_camera()
+	_update_first_person_weapon_visibility()
+
+
+func set_cinematic_view_active(active: bool) -> void:
+	if active:
+		cancel_kill_cam()
+		_cinematic_view_active = true
+		for weapon_node in _weapons:
+			if weapon_node != null:
+				weapon_node.visible = false
+		if _viewmodel_fill_light != null:
+			_viewmodel_fill_light.visible = false
+	else:
+		_cinematic_view_active = false
+		cancel_kill_cam()
+		_update_first_person_weapon_visibility()
+
+
+func restore_match_control() -> void:
+	cancel_kill_cam()
+	set_cinematic_view_active(false)
+	set_dead(false)
+	set_gameplay_input_enabled(true)
+	if _is_locally_controlled():
+		_restore_first_person_camera()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _snap_spawn_position(spawn_position: Vector3) -> Vector3:
+	var snapped_position: Vector3 = spawn_position
+	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if space_state == null:
+		return snapped_position
+
+	var query := PhysicsRayQueryParameters3D.create(
+		spawn_position + Vector3.UP * 4.0,
+		spawn_position + Vector3.DOWN * 8.0
+	)
+	query.exclude = [self]
+	var hit: Dictionary = space_state.intersect_ray(query)
+	if not hit.is_empty():
+		snapped_position.y = float(hit.position.y)
+	return snapped_position
 
 
 func set_body_color(color: Color) -> void:
+	_body_color = color
 	if body_mesh == null:
 		return
 
@@ -732,6 +817,10 @@ func _apply_crouch_collision(blend: float) -> void:
 func _setup_debug_cameras() -> void:
 	_third_back_pcam = get_node_or_null("ThirdPersonBackDebugPCam") as PhantomCamera3D
 	_third_front_pcam = get_node_or_null("ThirdPersonFrontDebugPCam") as PhantomCamera3D
+	_kill_cam_pcam = get_node_or_null("KillCamPCam") as PhantomCamera3D
+	if _kill_cam_pcam != null:
+		_kill_cam_pcam.visible = false
+		_kill_cam_pcam.set_priority(0)
 	if not debug_camera_enabled:
 		_restore_first_person_camera()
 		return
@@ -794,6 +883,16 @@ func _restore_first_person_camera() -> void:
 	camera.rotation = Vector3.ZERO
 	camera.current = _is_locally_controlled()
 	camera.reset_physics_interpolation()
+
+
+func _ensure_first_person_camera_attached() -> void:
+	if _cinematic_view_active or camera == null:
+		return
+	if not camera.top_level:
+		return
+	if _debug_camera_mode != DebugCameraMode.FIRST_PERSON:
+		return
+	_restore_first_person_camera()
 
 
 func _activate_debug_third_person_camera(pcam: PhantomCamera3D, front: bool) -> void:
@@ -1166,6 +1265,10 @@ func _cache_standing_pose() -> void:
 #region Visual de cuerpo en tercera persona
 func _update_body_visibility() -> void:
 	if body_mesh == null:
+		return
+	if _is_dead:
+		body_mesh.visible = false
+		_update_third_person_weapon_visibility()
 		return
 	var hide_body: bool = hide_body_for_local_player and _is_locally_controlled() and _is_debug_first_person_view()
 	body_mesh.visible = not hide_body

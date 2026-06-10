@@ -200,6 +200,81 @@ text = "E PLAY/PAUSA  F SIGUIENTE"
 horizontal_alignment = 1
 modulate = Color(1, 0.12, 0.05, 1)
 
+[node name="MatchObjective" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 18.0
+offset_right = 120.0
+offset_bottom = 40.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 16
+text = "PRIMERO A 10"
+horizontal_alignment = 1
+modulate = Color(1, 0.12, 0.05, 1)
+
+[node name="MatchObjectiveSub" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 38.0
+offset_right = 120.0
+offset_bottom = 52.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 9
+text = ""
+horizontal_alignment = 1
+modulate = Color(0.86, 0.86, 0.82, 1)
+
+[node name="ScoreboardPanel" type="VBoxContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -238.0
+offset_top = -112.0
+offset_right = -54.0
+offset_bottom = -42.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/separation = 3
+scale = Vector2(0.68, 0.68)
+
+[node name="ScoreboardTitle" type="Label" parent="ScoreboardPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "BAJAS"
+horizontal_alignment = 2
+modulate = Color(1, 0.12, 0.05, 1)
+
+[node name="ScoreboardLabel" type="Label" parent="ScoreboardPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "> P1  0
+  P2  0"
+horizontal_alignment = 2
+modulate = Color(0.86, 0.86, 0.82, 1)
+
+[node name="KillFeedPanel" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 58.0
+offset_top = -132.0
+offset_right = 334.0
+offset_bottom = -16.0
+grow_vertical = 0
+theme_override_constants/separation = 3
+scale = Vector2(0.68, 0.68)
+
 [node name="Crosshair" type="Control" parent="."]
 mouse_filter = 2
 layout_mode = 1

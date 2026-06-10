@@ -20,6 +20,20 @@ const HUD_TINT: Color = Color(0.92, 0.9, 0.86, 1.0)
 const HUD_WARN_TINT: Color = Color(1.0, 0.28, 0.12, 1.0)
 const HUD_TAG_TINT: Color = Color(1.0, 0.12, 0.05, 1.0)
 
+static var _accent_color: Color = HUD_TAG_TINT
+
+
+static func set_accent_color(color: Color) -> void:
+	_accent_color = color
+
+
+static func get_accent_color() -> Color:
+	return _accent_color
+
+
+static func get_tag_tint() -> Color:
+	return _accent_color
+
 
 static func make_icon(texture: Texture2D, tint: Color = HUD_TINT) -> TextureRect:
 	var icon := TextureRect.new()

@@ -3,13 +3,20 @@ extends Control
 
 signal resume_requested
 signal respawn_requested
+signal leave_match_requested
+signal quit_game_requested
+signal back_requested
 signal menu_visibility_changed(is_visible: bool)
 
 const FRAME_LIMITS: Array[int] = [0, 30, 60, 120]
+const CROSSHAIR_STYLE_COUNT: int = 12
 const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
 const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
 const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
 
+@onready var name_edit: LineEdit = %NameEdit
+@onready var accent_picker: ColorPickerButton = %AccentPicker
+@onready var crosshair_style_option: OptionButton = %CrosshairStyleOption
 @onready var mouse_sensitivity_slider: HSlider = %MouseSensitivitySlider
 @onready var mouse_sensitivity_value: Label = %MouseSensitivityValue
 @onready var fov_slider: HSlider = %FovSlider
@@ -23,7 +30,11 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 @onready var crosshair_check: CheckBox = %CrosshairCheck
 @onready var debug_hud_check: CheckBox = %DebugHudCheck
 @onready var debug_draw_check: CheckBox = %DebugDrawCheck
+@onready var game_title: Label = $Center/Scroll/Content/GameTitle
+@onready var back_button: Button = %BackButton
 @onready var resume_button: Button = %ResumeButton
+@onready var leave_match_button: Button = %LeaveMatchButton
+@onready var quit_game_button: Button = %QuitGameButton
 @onready var refill_ammo_button: Button = %RefillAmmoButton
 @onready var heal_player_button: Button = %HealPlayerButton
 @onready var damage_player_button: Button = %DamagePlayerButton
@@ -35,6 +46,9 @@ var _visual_director: PSXVisualDirector
 var _debug_draw_manager: ArenaDebugDrawManager
 var _is_syncing_controls: bool = false
 var _menu_motion
+var _in_match: bool = false
+var _accent_before_edit: Color = Color(1.0, 0.12, 0.05)
+var _accent_edit_committed: bool = false
 
 
 func _ready() -> void:
@@ -47,6 +61,8 @@ func _ready() -> void:
 	_populate_options()
 	_connect_controls()
 	_configure_dev_buttons()
+	if PlayerSettings != null:
+		PlayerSettings.settings_changed.connect(_on_player_settings_changed)
 
 
 func _process(delta: float) -> void:
@@ -66,31 +82,45 @@ func _configure_dev_buttons() -> void:
 
 
 func bind_context(
-	player: PlayerController,
-	hud: HUD,
-	visual_director: PSXVisualDirector,
-	debug_draw_manager: ArenaDebugDrawManager = null
+	player: PlayerController = null,
+	hud: HUD = null,
+	visual_director: PSXVisualDirector = null,
+	debug_draw_manager: ArenaDebugDrawManager = null,
+	in_match: bool = false
 ) -> void:
-	if player == null:
-		push_error("OptionsMenu cannot bind a null player.")
-		return
-	if hud == null:
-		push_error("OptionsMenu cannot bind a null HUD.")
-		return
-
 	_player = player
 	_hud = hud
 	_visual_director = visual_director
 	_debug_draw_manager = debug_draw_manager
+	_in_match = in_match
+	_update_mode_visibility()
 	_sync_controls_from_game()
+
+
+func _update_mode_visibility() -> void:
+	back_button.visible = not _in_match
+	resume_button.visible = _in_match
+	leave_match_button.visible = _in_match
+	if game_title != null:
+		game_title.text = "PAUSA" if _in_match else "OPCIONES"
+	var has_player: bool = _player != null
+	refill_ammo_button.visible = has_player
+	heal_player_button.visible = has_player
+	damage_player_button.visible = has_player
+	respawn_player_button.visible = has_player
+	debug_hud_check.visible = has_player
+	debug_draw_check.visible = has_player and _debug_draw_manager != null
 
 
 func open() -> void:
 	_sync_controls_from_game()
 	visible = true
-	get_tree().paused = true
+	get_tree().paused = _in_match
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	resume_button.grab_focus()
+	if _in_match:
+		resume_button.grab_focus()
+	else:
+		back_button.grab_focus()
 	if _menu_motion != null:
 		_menu_motion.play_open()
 	menu_visibility_changed.emit(true)
@@ -99,7 +129,8 @@ func open() -> void:
 func close() -> void:
 	visible = false
 	get_tree().paused = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if _in_match:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	menu_visibility_changed.emit(false)
 
 
@@ -128,9 +159,42 @@ func _populate_options() -> void:
 	lens_preset_option.add_item("PSX 8mm", PSXVisualDirector.LensPreset.PSX_8MM)
 	lens_preset_option.add_item("Extreme Debug", PSXVisualDirector.LensPreset.EXTREME_DEBUG)
 
+	crosshair_style_option.clear()
+	crosshair_style_option.add_item("Clásica", -1)
+	for index in range(CROSSHAIR_STYLE_COUNT):
+		crosshair_style_option.add_item("Estilo %d" % (index + 1), index)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if _is_accent_popup_open():
+		_cancel_accent_edit()
+		get_viewport().set_input_as_handled()
+		return
+	if _in_match:
+		close()
+		resume_requested.emit()
+	else:
+		_on_back_pressed()
+	get_viewport().set_input_as_handled()
+
 
 func _connect_controls() -> void:
+	back_button.pressed.connect(_on_back_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
+	leave_match_button.pressed.connect(_on_leave_match_pressed)
+	quit_game_button.pressed.connect(_on_quit_game_pressed)
+	name_edit.text_changed.connect(_on_name_changed)
+	accent_picker.color_changed.connect(_on_accent_changed)
+	accent_picker.pressed.connect(_on_accent_picker_pressed)
+	var accent_popup: PopupPanel = accent_picker.get_popup()
+	if accent_popup != null:
+		accent_popup.about_to_popup.connect(_on_accent_about_to_popup)
+		accent_popup.popup_hide.connect(_on_accent_popup_hidden)
+	crosshair_style_option.item_selected.connect(_on_crosshair_style_selected)
 	mouse_sensitivity_slider.value_changed.connect(_on_mouse_sensitivity_changed)
 	fov_slider.value_changed.connect(_on_fov_changed)
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
@@ -151,17 +215,31 @@ func _connect_controls() -> void:
 func _sync_controls_from_game() -> void:
 	_is_syncing_controls = true
 
-	if _player != null:
+	if PlayerSettings != null:
+		name_edit.text = PlayerSettings.display_name
+		accent_picker.color = PlayerSettings.accent_color
+		mouse_sensitivity_slider.value = PlayerSettings.mouse_sensitivity
+		fov_slider.value = PlayerSettings.fov
+		_select_crosshair_style(PlayerSettings.crosshair_index)
+		crosshair_check.button_pressed = PlayerSettings.crosshair_enabled
+		fullscreen_check.button_pressed = PlayerSettings.fullscreen
+		vsync_check.button_pressed = PlayerSettings.vsync
+		_select_frame_limit(PlayerSettings.fps_cap)
+		psx_filter_check.button_pressed = PlayerSettings.psx_filter_enabled
+		_select_option_by_id(time_preset_option, PlayerSettings.time_of_day_preset)
+		_select_option_by_id(lens_preset_option, PlayerSettings.lens_preset)
+	elif _player != null:
 		mouse_sensitivity_slider.value = _player.mouse_sensitivity
 		fov_slider.value = _player.fov
+
+	if _player != null:
 		_update_mouse_sensitivity_label(_player.mouse_sensitivity)
 		_update_fov_label(_player.fov)
+	else:
+		_update_mouse_sensitivity_label(mouse_sensitivity_slider.value)
+		_update_fov_label(fov_slider.value)
 
-	fullscreen_check.button_pressed = _is_fullscreen_mode()
-	vsync_check.button_pressed = DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED
-	_select_frame_limit(Engine.max_fps)
-
-	if _visual_director != null:
+	if _visual_director != null and PlayerSettings == null:
 		psx_filter_check.button_pressed = _visual_director.post_process_enabled
 		_select_option_by_id(time_preset_option, _visual_director.time_of_day_preset)
 		_select_option_by_id(lens_preset_option, _visual_director.lens_preset)
@@ -179,6 +257,14 @@ func _sync_controls_from_game() -> void:
 	_is_syncing_controls = false
 
 
+func _select_crosshair_style(index: int) -> void:
+	for item_index in range(crosshair_style_option.get_item_count()):
+		if crosshair_style_option.get_item_id(item_index) == index:
+			crosshair_style_option.select(item_index)
+			return
+	crosshair_style_option.select(0)
+
+
 func _select_frame_limit(limit: int) -> void:
 	var option_id: int = limit
 	if not FRAME_LIMITS.has(limit):
@@ -194,24 +280,151 @@ func _select_option_by_id(option_button: OptionButton, id: int) -> void:
 	option_button.select(0)
 
 
+func _on_back_pressed() -> void:
+	close()
+	back_requested.emit()
+
+
 func _on_resume_pressed() -> void:
 	close()
 	resume_requested.emit()
 
 
+func _on_leave_match_pressed() -> void:
+	close()
+	leave_match_requested.emit()
+
+
+func _on_quit_game_pressed() -> void:
+	_save_player_settings()
+	quit_game_requested.emit()
+
+
+func _on_name_changed(new_text: String) -> void:
+	if _is_syncing_controls or PlayerSettings == null:
+		return
+	PlayerSettings.display_name = new_text.strip_edges()
+	if _player != null and not PlayerSettings.display_name.is_empty():
+		_player.display_name = PlayerSettings.display_name
+	PlayerSettings.save_settings()
+
+
+func _on_accent_picker_pressed() -> void:
+	_accent_edit_committed = false
+
+
+func _on_accent_about_to_popup() -> void:
+	if PlayerSettings != null:
+		_accent_before_edit = PlayerSettings.accent_color
+	call_deferred("_style_accent_picker_popup")
+
+
+func _style_accent_picker_popup() -> void:
+	var picker: ColorPicker = accent_picker.get_picker()
+	if picker == null:
+		return
+	picker.edit_alpha = false
+	ArenaMenuStyleScript.apply_to_menu(picker)
+
+
+func _on_accent_popup_hidden() -> void:
+	if _accent_edit_committed or PlayerSettings == null:
+		return
+	_commit_accent_color(accent_picker.color)
+
+
+func _on_accent_changed(color: Color) -> void:
+	if _is_syncing_controls or PlayerSettings == null:
+		return
+	_apply_accent_preview(color)
+
+
+func _apply_accent_preview(color: Color) -> void:
+	HudIcons.set_accent_color(color)
+	ArenaMenuStyleScript.apply_to_menu(self)
+	if _hud != null:
+		_hud.apply_accent_theme()
+
+
+func _commit_accent_color(color: Color) -> void:
+	if PlayerSettings == null:
+		return
+	_accent_edit_committed = true
+	PlayerSettings.accent_color = color
+	PlayerSettings.save_settings()
+	_apply_accent_preview(color)
+
+
+func _cancel_accent_edit() -> void:
+	accent_picker.get_popup().hide()
+	accent_picker.color = _accent_before_edit
+	_apply_accent_preview(_accent_before_edit)
+	if PlayerSettings != null:
+		PlayerSettings.accent_color = _accent_before_edit
+
+
+func _is_accent_popup_open() -> bool:
+	var popup: PopupPanel = accent_picker.get_popup()
+	return popup != null and popup.visible
+
+
+func _on_crosshair_style_selected(index: int) -> void:
+	if _is_syncing_controls or PlayerSettings == null:
+		return
+	PlayerSettings.crosshair_index = crosshair_style_option.get_item_id(index)
+	PlayerSettings.save_settings()
+	_apply_crosshair_style()
+
+
+func _on_player_settings_changed() -> void:
+	ArenaMenuStyleScript.apply_to_menu(self)
+	_apply_crosshair_style()
+	if _hud != null:
+		_hud.apply_accent_theme()
+
+
+func _apply_crosshair_style() -> void:
+	if _hud == null or PlayerSettings == null:
+		return
+	var use_sprite: bool = PlayerSettings.crosshair_index >= 0
+	_hud.rebuild_crosshair(use_sprite, maxi(PlayerSettings.crosshair_index, 0))
+	_hud.set_crosshair_enabled(PlayerSettings.crosshair_enabled)
+
+
+func _save_player_settings() -> void:
+	if PlayerSettings == null:
+		return
+	PlayerSettings.mouse_sensitivity = clampf(mouse_sensitivity_slider.value, 0.02, 0.50)
+	PlayerSettings.fov = clampf(fov_slider.value, 75.0, 110.0)
+	PlayerSettings.fullscreen = fullscreen_check.button_pressed
+	PlayerSettings.vsync = vsync_check.button_pressed
+	PlayerSettings.fps_cap = frame_limit_option.get_item_id(frame_limit_option.selected)
+	PlayerSettings.psx_filter_enabled = psx_filter_check.button_pressed
+	PlayerSettings.lens_preset = lens_preset_option.get_item_id(lens_preset_option.selected)
+	PlayerSettings.crosshair_enabled = crosshair_check.button_pressed
+	PlayerSettings.save_settings()
+	PlayerSettings.apply_display_settings()
+
+
 func _on_mouse_sensitivity_changed(value: float) -> void:
 	_update_mouse_sensitivity_label(value)
-	if _is_syncing_controls or _player == null:
+	if _is_syncing_controls:
 		return
-	_player.mouse_sensitivity = clampf(value, 0.02, 0.50)
+	if PlayerSettings != null:
+		PlayerSettings.mouse_sensitivity = clampf(value, 0.02, 0.50)
+	if _player != null:
+		_player.mouse_sensitivity = clampf(value, 0.02, 0.50)
 
 
 func _on_fov_changed(value: float) -> void:
 	_update_fov_label(value)
-	if _is_syncing_controls or _player == null:
+	if _is_syncing_controls:
 		return
-	_player.fov = clampf(value, 75.0, 110.0)
-	_player.aim_fov = minf(_player.aim_fov, _player.fov - 15.0)
+	if PlayerSettings != null:
+		PlayerSettings.fov = clampf(value, 75.0, 110.0)
+	if _player != null:
+		_player.fov = clampf(value, 75.0, 110.0)
+		_player.aim_fov = minf(_player.aim_fov, _player.fov - 15.0)
 
 
 func _update_mouse_sensitivity_label(value: float) -> void:
@@ -239,47 +452,74 @@ func _is_fullscreen_mode() -> bool:
 func _on_fullscreen_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	var mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if enabled else DisplayServer.WINDOW_MODE_WINDOWED
-	DisplayServer.window_set_mode(mode)
+	if PlayerSettings != null:
+		PlayerSettings.fullscreen = enabled
+		PlayerSettings.apply_display_settings()
+	else:
+		var mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if enabled else DisplayServer.WINDOW_MODE_WINDOWED
+		DisplayServer.window_set_mode(mode)
 
 
 func _on_vsync_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	var mode: int = DisplayServer.VSYNC_ENABLED if enabled else DisplayServer.VSYNC_DISABLED
-	DisplayServer.window_set_vsync_mode(mode)
+	if PlayerSettings != null:
+		PlayerSettings.vsync = enabled
+		PlayerSettings.apply_display_settings()
+	else:
+		var mode: int = DisplayServer.VSYNC_ENABLED if enabled else DisplayServer.VSYNC_DISABLED
+		DisplayServer.window_set_vsync_mode(mode)
 
 
 func _on_frame_limit_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
-	Engine.max_fps = frame_limit_option.get_item_id(index)
+	var limit: int = frame_limit_option.get_item_id(index)
+	if PlayerSettings != null:
+		PlayerSettings.fps_cap = limit
+		PlayerSettings.apply_display_settings()
+	else:
+		Engine.max_fps = limit
 
 
 func _on_psx_filter_toggled(enabled: bool) -> void:
-	if _is_syncing_controls or _visual_director == null:
+	if _is_syncing_controls:
 		return
-	_visual_director.post_process_enabled = enabled
-	_visual_director.refresh_visual_style()
+	if PlayerSettings != null:
+		PlayerSettings.psx_filter_enabled = enabled
+	if _visual_director != null:
+		_visual_director.post_process_enabled = enabled
+		_visual_director.refresh_visual_style()
 
 
 func _on_time_preset_selected(index: int) -> void:
-	if _is_syncing_controls or _visual_director == null:
+	if _is_syncing_controls:
 		return
-	_visual_director.time_of_day_preset = time_preset_option.get_item_id(index)
-	_visual_director.refresh_visual_style()
+	var preset: int = time_preset_option.get_item_id(index)
+	if PlayerSettings != null:
+		PlayerSettings.time_of_day_preset = preset
+	if _visual_director != null:
+		_visual_director.time_of_day_preset = preset
+		_visual_director.refresh_visual_style()
 
 
 func _on_lens_preset_selected(index: int) -> void:
-	if _is_syncing_controls or _visual_director == null:
+	if _is_syncing_controls:
 		return
-	_visual_director.apply_lens_preset(lens_preset_option.get_item_id(index) as PSXVisualDirector.LensPreset)
+	var preset: int = lens_preset_option.get_item_id(index)
+	if PlayerSettings != null:
+		PlayerSettings.lens_preset = preset
+	if _visual_director != null:
+		_visual_director.apply_lens_preset(preset as PSXVisualDirector.LensPreset)
 
 
 func _on_crosshair_toggled(enabled: bool) -> void:
-	if _is_syncing_controls or _hud == null:
+	if _is_syncing_controls:
 		return
-	_hud.set_crosshair_enabled(enabled)
+	if PlayerSettings != null:
+		PlayerSettings.crosshair_enabled = enabled
+	if _hud != null:
+		_hud.set_crosshair_enabled(enabled)
 
 
 func _on_debug_hud_toggled(enabled: bool) -> void:

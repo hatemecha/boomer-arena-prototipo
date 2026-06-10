@@ -35,42 +35,184 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Elegí cómo entrar a la arena."
 
-[node name="LocalAddressesLabel" type="Label" parent="Center/Content"]
+[node name="EntryScreen" type="VBoxContainer" parent="Center/Content"]
 unique_name_in_owner = true
-layout_mode = 2
-text = "IP LOCAL: no disponible"
-autowrap_mode = 3
-text_overrun_behavior = 3
-
-[node name="AddressRow" type="HBoxContainer" parent="Center/Content"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="AddressLabel" type="Label" parent="Center/Content/AddressRow"]
+[node name="PracticeButton" type="Button" parent="Center/Content/EntryScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
 layout_mode = 2
+text = "PRACTICAR"
+
+[node name="LanButton" type="Button" parent="Center/Content/EntryScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "JUGAR LAN"
+
+[node name="OptionsButton" type="Button" parent="Center/Content/EntryScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "OPCIONES"
+
+[node name="QuitButton" type="Button" parent="Center/Content/EntryScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "SALIR"
+
+[node name="SetupScreen" type="VBoxContainer" parent="Center/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModeRow" type="HBoxContainer" parent="Center/Content/SetupScreen"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ModeLabel" type="Label" parent="Center/Content/SetupScreen/ModeRow"]
 custom_minimum_size = Vector2(72, 0)
-text = "HOST"
+layout_mode = 2
+text = "MODO"
 horizontal_alignment = 2
 
-[node name="AddressEdit" type="LineEdit" parent="Center/Content/AddressRow"]
+[node name="WinModeOption" type="OptionButton" parent="Center/Content/SetupScreen/ModeRow"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(180, 0)
 size_flags_horizontal = 3
-text = "127.0.0.1"
-placeholder_text = "192.168.0.10"
 
-[node name="PortRow" type="HBoxContainer" parent="Center/Content"]
+[node name="LimitRow" type="HBoxContainer" parent="Center/Content/SetupScreen"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="PortLabel" type="Label" parent="Center/Content/PortRow"]
-layout_mode = 2
+[node name="LimitLabel" type="Label" parent="Center/Content/SetupScreen/LimitRow"]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "BAJAS"
+horizontal_alignment = 2
+
+[node name="LimitSpin" type="SpinBox" parent="Center/Content/SetupScreen/LimitRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(180, 0)
+size_flags_horizontal = 3
+alignment = 2
+min_value = 1.0
+max_value = 50.0
+value = 10.0
+
+[node name="TimeRow" type="HBoxContainer" parent="Center/Content/SetupScreen"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TimeLabel" type="Label" parent="Center/Content/SetupScreen/TimeRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "MINUTOS"
+horizontal_alignment = 2
+
+[node name="TimeSpin" type="SpinBox" parent="Center/Content/SetupScreen/TimeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(180, 0)
+size_flags_horizontal = 3
+alignment = 2
+min_value = 1.0
+max_value = 30.0
+value = 5.0
+
+[node name="TimeOfDayRow" type="HBoxContainer" parent="Center/Content/SetupScreen"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TimeOfDayLabel" type="Label" parent="Center/Content/SetupScreen/TimeOfDayRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "HORA"
+horizontal_alignment = 2
+
+[node name="TimeOfDayOption" type="OptionButton" parent="Center/Content/SetupScreen/TimeOfDayRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(180, 0)
+size_flags_horizontal = 3
+
+[node name="StartSetupButton" type="Button" parent="Center/Content/SetupScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "EMPEZAR"
+
+[node name="BackFromSetupButton" type="Button" parent="Center/Content/SetupScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "ATRÁS"
+
+[node name="LanChoiceScreen" type="VBoxContainer" parent="Center/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HostLanButton" type="Button" parent="Center/Content/LanChoiceScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "HOSTEAR"
+
+[node name="BrowseLanButton" type="Button" parent="Center/Content/LanChoiceScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "BUSCAR PARTIDAS"
+
+[node name="BackFromLanChoiceButton" type="Button" parent="Center/Content/LanChoiceScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "ATRÁS"
+
+[node name="HostScreen" type="VBoxContainer" parent="Center/Content"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HostInfoLabel" type="Label" parent="Center/Content/HostScreen"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "COMPARTÍ ESTOS DATOS"
+horizontal_alignment = 1
+
+[node name="LocalAddressesLabel" type="Label" parent="Center/Content/HostScreen"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "IP LOCAL: no disponible"
+autowrap_mode = 3
+horizontal_alignment = 1
+
+[node name="PortRow" type="HBoxContainer" parent="Center/Content/HostScreen"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PortLabel" type="Label" parent="Center/Content/HostScreen/PortRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
 text = "PUERTO"
 horizontal_alignment = 2
 
-[node name="PortSpin" type="SpinBox" parent="Center/Content/PortRow"]
+[node name="PortSpin" type="SpinBox" parent="Center/Content/HostScreen/PortRow"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(180, 0)
@@ -79,47 +221,105 @@ min_value = 1024.0
 max_value = 65535.0
 value = 24500.0
 
-[node name="TimeRow" type="HBoxContainer" parent="Center/Content"]
+[node name="CopyInfoButton" type="Button" parent="Center/Content/HostScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "COPIAR IP:PUERTO"
+
+[node name="CreateHostButton" type="Button" parent="Center/Content/HostScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "CREAR PARTIDA"
+
+[node name="BackFromHostButton" type="Button" parent="Center/Content/HostScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "ATRÁS"
+
+[node name="JoinScreen" type="VBoxContainer" parent="Center/Content"]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="TimeLabel" type="Label" parent="Center/Content/TimeRow"]
+[node name="SessionList" type="ItemList" parent="Center/Content/JoinScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 120)
 layout_mode = 2
+allow_reselect = true
+
+[node name="RefreshSessionsButton" type="Button" parent="Center/Content/JoinScreen"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 24)
+layout_mode = 2
+text = "ACTUALIZAR LISTA"
+
+[node name="ManualJoinToggle" type="CheckBox" parent="Center/Content/JoinScreen"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "No veo mi partida (manual)"
+
+[node name="ManualJoinPanel" type="VBoxContainer" parent="Center/Content/JoinScreen"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AddressRow" type="HBoxContainer" parent="Center/Content/JoinScreen/ManualJoinPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AddressLabel" type="Label" parent="Center/Content/JoinScreen/ManualJoinPanel/AddressRow"]
 custom_minimum_size = Vector2(72, 0)
-text = "HORA"
+layout_mode = 2
+text = "HOST"
 horizontal_alignment = 2
 
-[node name="TimeOfDayOption" type="OptionButton" parent="Center/Content/TimeRow"]
+[node name="AddressEdit" type="LineEdit" parent="Center/Content/JoinScreen/ManualJoinPanel/AddressRow"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(180, 0)
 size_flags_horizontal = 3
+text = "127.0.0.1"
 
-[node name="HostButton" type="Button" parent="Center/Content"]
+[node name="JoinPortRow" type="HBoxContainer" parent="Center/Content/JoinScreen/ManualJoinPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="JoinPortLabel" type="Label" parent="Center/Content/JoinScreen/ManualJoinPanel/JoinPortRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "PUERTO"
+horizontal_alignment = 2
+
+[node name="JoinPortSpin" type="SpinBox" parent="Center/Content/JoinScreen/ManualJoinPanel/JoinPortRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(180, 0)
+size_flags_horizontal = 3
+min_value = 1024.0
+max_value = 65535.0
+value = 24500.0
+
+[node name="JoinManualButton" type="Button" parent="Center/Content/JoinScreen/ManualJoinPanel"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 24)
 layout_mode = 2
-text = "HOST LAN"
+text = "UNIRSE MANUAL"
 
-[node name="JoinButton" type="Button" parent="Center/Content"]
+[node name="BackFromJoinButton" type="Button" parent="Center/Content/JoinScreen"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 24)
 layout_mode = 2
-text = "UNIRSE"
-
-[node name="PracticeButton" type="Button" parent="Center/Content"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(260, 24)
-layout_mode = 2
-text = "OFFLINE TEST"
+text = "ATRÁS"
 
 [node name="DisconnectButton" type="Button" parent="Center/Content"]
 unique_name_in_owner = true
+visible = false
 custom_minimum_size = Vector2(260, 24)
 layout_mode = 2
 disabled = true
 text = "DESCONECTAR"
-
-[node name="MetaLabel" type="Label" parent="Center/Content"]
-layout_mode = 2
-text = "TEST_ARENA // 10 BAJAS // 640x360"

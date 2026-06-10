@@ -56,6 +56,8 @@ var _post_process_layer: CanvasLayer
 var _post_process_rect: ColorRect
 var _post_process_material: ShaderMaterial
 var _nearest_filtering_applied: bool = false
+var _menu_lens_boost: bool = false
+var _base_chromatic_aberration_strength: float = 0.0024
 
 # Cache de nodos de escena. La arena es estatica, asi que se recolecta una sola
 # vez (una unica recursion) en lugar de recorrer todo el arbol en cada refresh.
@@ -419,14 +421,23 @@ func _apply_lens_preset_values(preset: LensPreset) -> void:
 			lens_dirt_strength = 0.03
 
 
+func set_menu_lens_boost(enabled: bool) -> void:
+	_menu_lens_boost = enabled
+	_apply_lens_shader_parameters()
+
+
 func _apply_lens_shader_parameters() -> void:
 	if _post_process_material == null:
 		return
 
+	var effective_chromatic: float = chromatic_aberration_strength
+	if _menu_lens_boost:
+		effective_chromatic *= 1.2
+
 	_post_process_material.set_shader_parameter("fisheye_strength", fisheye_strength)
 	_post_process_material.set_shader_parameter("fisheye_center_flatness", fisheye_center_flatness)
 	_post_process_material.set_shader_parameter("lens_zoom_compensation", lens_zoom_compensation)
-	_post_process_material.set_shader_parameter("chromatic_aberration_strength", chromatic_aberration_strength)
+	_post_process_material.set_shader_parameter("chromatic_aberration_strength", effective_chromatic)
 	_post_process_material.set_shader_parameter("chromatic_edge_start", chromatic_edge_start)
 	_post_process_material.set_shader_parameter("vignette_strength", vignette_strength)
 	_post_process_material.set_shader_parameter("vignette_radius", vignette_radius)
