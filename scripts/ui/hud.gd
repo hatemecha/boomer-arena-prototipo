@@ -86,6 +86,8 @@ func _ready() -> void:
 	process_priority = 1
 	_ensure_optional_labels()
 	_capture_hud_base_offsets()
+	resized.connect(_center_crosshair)
+	call_deferred("_center_crosshair")
 	_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
 	set_debug_visible(_debug_visible)
 	if music_panel != null:
@@ -368,15 +370,33 @@ func rebuild_crosshair(use_sprite: bool, crosshair_index: int) -> void:
 	crosshair.name = "Crosshair"
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
-	crosshair.offset_left = -17.0
-	crosshair.offset_top = -17.0
-	crosshair.offset_right = 17.0
-	crosshair.offset_bottom = 17.0
+	crosshair.offset_left = -16.0
+	crosshair.offset_top = -16.0
+	crosshair.offset_right = 16.0
+	crosshair.offset_bottom = 16.0
 	crosshair.set_script(crosshair_script)
 	add_child(crosshair)
+	call_deferred("_center_crosshair")
 	if use_sprite and crosshair.has_method("set_crosshair_index"):
 		crosshair.call("set_crosshair_index", crosshair_index)
 	set_crosshair_enabled(_crosshair_enabled)
+
+
+func _center_crosshair() -> void:
+	if crosshair == null:
+		return
+
+	var crosshair_size: Vector2 = crosshair.custom_minimum_size
+	if crosshair_size.x <= 0.0 or crosshair_size.y <= 0.0:
+		crosshair_size = crosshair.size
+	if crosshair_size.x <= 0.0 or crosshair_size.y <= 0.0:
+		crosshair_size = Vector2(32.0, 32.0)
+
+	crosshair.set_anchors_preset(Control.PRESET_CENTER, false)
+	crosshair.offset_left = -crosshair_size.x * 0.5
+	crosshair.offset_top = -crosshair_size.y * 0.5
+	crosshair.offset_right = crosshair_size.x * 0.5
+	crosshair.offset_bottom = crosshair_size.y * 0.5
 
 
 func _on_match_started() -> void:
@@ -452,14 +472,19 @@ func _refresh_match_objective() -> void:
 	if match_objective == null:
 		return
 
-	if _match_manager.win_mode == MatchManager.WinMode.TIME_LIMIT:
-		match_objective.text = _match_manager.format_time_remaining()
-		if match_objective_sub != null:
-			match_objective_sub.text = ""
-	else:
-		match_objective.text = "PRIMERO A %d" % _match_manager.score_limit
-		if match_objective_sub != null:
-			match_objective_sub.text = ""
+	match _match_manager.win_mode:
+		MatchManager.WinMode.TIME_LIMIT:
+			match_objective.text = _match_manager.format_time_remaining()
+			if match_objective_sub != null:
+				match_objective_sub.text = ""
+		MatchManager.WinMode.PRACTICE:
+			match_objective.text = "PRÁCTICA"
+			if match_objective_sub != null:
+				match_objective_sub.text = ""
+		_:
+			match_objective.text = "PRIMERO A %d" % _match_manager.score_limit
+			if match_objective_sub != null:
+				match_objective_sub.text = ""
 	_refresh_scoreboard()
 
 

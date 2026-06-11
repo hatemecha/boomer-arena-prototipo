@@ -10,6 +10,7 @@ signal kill_feed_event(killer_name: String, victim_name: String, killer_id: int,
 enum WinMode {
 	KILL_LIMIT,
 	TIME_LIMIT,
+	PRACTICE,
 }
 
 @export var win_mode: WinMode = WinMode.KILL_LIMIT
@@ -197,9 +198,13 @@ func format_time_remaining() -> String:
 
 
 func get_objective_text() -> String:
-	if win_mode == WinMode.TIME_LIMIT:
-		return format_time_remaining()
-	return "PRIMERO A %d" % score_limit
+	match win_mode:
+		WinMode.TIME_LIMIT:
+			return format_time_remaining()
+		WinMode.PRACTICE:
+			return "PRÁCTICA"
+		_:
+			return "PRIMERO A %d" % score_limit
 
 
 func _finish_match(winner_id: int) -> void:

@@ -183,7 +183,7 @@ func _on_practice_entry_pressed() -> void:
 	_setup_for_lan_host = false
 	_show_screen(Screen.SETUP)
 	_update_setup_visibility()
-	set_status("Configurá la partida de práctica.")
+	set_status("Elegí el horario del mapa.")
 
 
 func _on_lan_entry_pressed() -> void:
@@ -208,7 +208,7 @@ func _on_start_setup_pressed() -> void:
 		return
 	set_busy(true)
 	set_status("Entrando en práctica...")
-	practice_requested.emit(_get_selected_time_of_day(), get_match_rules())
+	practice_requested.emit(_get_selected_time_of_day(), {})
 
 
 func _on_back_from_setup_pressed() -> void:
@@ -324,7 +324,12 @@ func _focus_current_screen() -> void:
 		Screen.ENTRY:
 			%PracticeButton.grab_focus()
 		Screen.SETUP:
-			%StartSetupButton.grab_focus()
+			if _setup_for_lan_host:
+				%StartSetupButton.grab_focus()
+			elif time_of_day_option != null:
+				time_of_day_option.grab_focus()
+			else:
+				%StartSetupButton.grab_focus()
 		Screen.LAN_CHOICE:
 			%HostLanButton.grab_focus()
 		Screen.HOST:
@@ -376,9 +381,19 @@ func _configure_win_mode_options() -> void:
 
 
 func _update_setup_visibility() -> void:
+	var show_match_rules: bool = _setup_for_lan_host
+	var mode_row: Node = win_mode_option.get_parent() if win_mode_option != null else null
+	if mode_row != null:
+		mode_row.visible = show_match_rules
 	if time_of_day_row != null:
-		time_of_day_row.visible = _setup_for_lan_host
-	_update_win_mode_ui()
+		time_of_day_row.visible = true
+	if show_match_rules:
+		_update_win_mode_ui()
+	else:
+		if limit_row != null:
+			limit_row.visible = false
+		if time_row != null:
+			time_row.visible = false
 
 
 func _update_win_mode_ui() -> void:

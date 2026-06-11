@@ -21,6 +21,7 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 @onready var mouse_sensitivity_value: Label = %MouseSensitivityValue
 @onready var fov_slider: HSlider = %FovSlider
 @onready var fov_value: Label = %FovValue
+@onready var weapon_hold_option: OptionButton = %WeaponHoldOption
 @onready var fullscreen_check: CheckBox = %FullscreenCheck
 @onready var vsync_check: CheckBox = %VsyncCheck
 @onready var frame_limit_option: OptionButton = %FrameLimitOption
@@ -164,6 +165,10 @@ func _populate_options() -> void:
 	for index in range(CROSSHAIR_STYLE_COUNT):
 		crosshair_style_option.add_item("Estilo %d" % (index + 1), index)
 
+	weapon_hold_option.clear()
+	weapon_hold_option.add_item("Default", PlayerController.WeaponHoldMode.DEFAULT)
+	weapon_hold_option.add_item("Doom", PlayerController.WeaponHoldMode.DOOM)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
@@ -197,6 +202,7 @@ func _connect_controls() -> void:
 	crosshair_style_option.item_selected.connect(_on_crosshair_style_selected)
 	mouse_sensitivity_slider.value_changed.connect(_on_mouse_sensitivity_changed)
 	fov_slider.value_changed.connect(_on_fov_changed)
+	weapon_hold_option.item_selected.connect(_on_weapon_hold_selected)
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
 	vsync_check.toggled.connect(_on_vsync_toggled)
 	frame_limit_option.item_selected.connect(_on_frame_limit_selected)
@@ -222,6 +228,7 @@ func _sync_controls_from_game() -> void:
 		fov_slider.value = PlayerSettings.fov
 		_select_crosshair_style(PlayerSettings.crosshair_index)
 		crosshair_check.button_pressed = PlayerSettings.crosshair_enabled
+		_select_option_by_id(weapon_hold_option, PlayerSettings.weapon_hold_mode)
 		fullscreen_check.button_pressed = PlayerSettings.fullscreen
 		vsync_check.button_pressed = PlayerSettings.vsync
 		_select_frame_limit(PlayerSettings.fps_cap)
@@ -231,6 +238,7 @@ func _sync_controls_from_game() -> void:
 	elif _player != null:
 		mouse_sensitivity_slider.value = _player.mouse_sensitivity
 		fov_slider.value = _player.fov
+		_select_option_by_id(weapon_hold_option, int(_player.weapon_hold_mode))
 
 	if _player != null:
 		_update_mouse_sensitivity_label(_player.mouse_sensitivity)
@@ -402,6 +410,7 @@ func _save_player_settings() -> void:
 	PlayerSettings.psx_filter_enabled = psx_filter_check.button_pressed
 	PlayerSettings.lens_preset = lens_preset_option.get_item_id(lens_preset_option.selected)
 	PlayerSettings.crosshair_enabled = crosshair_check.button_pressed
+	PlayerSettings.weapon_hold_mode = weapon_hold_option.get_item_id(weapon_hold_option.selected)
 	PlayerSettings.save_settings()
 	PlayerSettings.apply_display_settings()
 
@@ -425,6 +434,17 @@ func _on_fov_changed(value: float) -> void:
 	if _player != null:
 		_player.fov = clampf(value, 75.0, 110.0)
 		_player.aim_fov = minf(_player.aim_fov, _player.fov - 15.0)
+
+
+func _on_weapon_hold_selected(index: int) -> void:
+	if _is_syncing_controls:
+		return
+	var hold_mode: int = weapon_hold_option.get_item_id(index)
+	if PlayerSettings != null:
+		PlayerSettings.weapon_hold_mode = hold_mode
+		PlayerSettings.save_settings()
+	if _player != null:
+		_player.weapon_hold_mode = clampi(hold_mode, 0, PlayerController.WeaponHoldMode.size() - 1) as PlayerController.WeaponHoldMode
 
 
 func _update_mouse_sensitivity_label(value: float) -> void:

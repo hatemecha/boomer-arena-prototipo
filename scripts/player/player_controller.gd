@@ -7,6 +7,11 @@ enum DebugCameraMode {
 	THIRD_PERSON_FRONT,
 }
 
+enum WeaponHoldMode {
+	DEFAULT,
+	DOOM,
+}
+
 const _DEBUG_CAMERA_PRIORITY_ACTIVE := 20
 const _DEBUG_CAMERA_PRIORITY_INACTIVE := 0
 
@@ -91,6 +96,9 @@ signal weapon_fired(weapon_name: String)
 @export_range(1.0, 30.0) var weapon_sway_smoothing: float = 10.0
 @export_range(0.0, 0.2) var weapon_jump_drop: float = 0.065
 @export_range(0.0, 0.2) var weapon_landing_kick: float = 0.08
+@export var weapon_hold_mode: WeaponHoldMode = WeaponHoldMode.DEFAULT
+@export var align_weapon_muzzle_to_crosshair: bool = false
+@export_range(-0.25, 0.25) var weapon_crosshair_lateral_offset: float = 0.0
 @export var hide_body_for_local_player: bool = true
 @export var hide_third_person_weapon_for_local_player: bool = true
 @export_range(0.0, 0.18) var body_breath_amount: float = 0.025
@@ -1446,7 +1454,8 @@ func _update_aim_state(delta: float) -> void:
 	var default_transform: Transform3D = _weapon_default_transforms.get(weapon, weapon.transform)
 	var aim_transform: Transform3D = _build_aim_transform(weapon, default_transform)
 	var base_transform: Transform3D = default_transform.interpolate_with(aim_transform, _aim_blend)
-	weapon.transform = _calculate_weapon_motion(delta, base_transform)
+	var motion_transform: Transform3D = _calculate_weapon_motion(delta, base_transform)
+	weapon.transform = _align_weapon_muzzle_lateral_to_crosshair(motion_transform, weapon)
 
 
 func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Transform3D:
@@ -1461,6 +1470,7 @@ func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Tran
 
 	var target_position := Vector3.ZERO
 	var target_rotation := Vector3.ZERO
+	var reload_motion_damp: float = 0.12 if weapon != null and weapon.is_reloading() else 1.0
 	if weapon_motion_enabled and _gameplay_input_enabled and not _is_dead:
 		var max_speed: float = maxf(run_speed, 0.001)
 		var motion_blend: float = lerpf(0.72, 1.0, _bob_blend)
@@ -1488,8 +1498,8 @@ func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Tran
 		target_rotation.z += -strafe_factor * weapon_rotation_sway_amount * 1.2
 		target_rotation.x += forward_factor * weapon_rotation_sway_amount * 0.48
 
-		target_position *= motion_scale
-		target_rotation *= motion_scale
+		target_position *= motion_scale * reload_motion_damp
+		target_rotation *= motion_scale * reload_motion_damp
 		var max_weapon_offset: float = lerpf(0.3, 0.2, _aim_blend)
 		if target_position.length() > max_weapon_offset:
 			target_position = target_position.normalized() * max_weapon_offset
@@ -1551,6 +1561,26 @@ func _build_aim_transform(active_weapon: WeaponBase, default_transform: Transfor
 		aim_origin += aim_basis * aim_view_offset
 
 	return Transform3D(aim_basis, aim_origin)
+
+
+func _align_weapon_muzzle_lateral_to_crosshair(base_transform: Transform3D, active_weapon: WeaponBase) -> Transform3D:
+	if active_weapon == null:
+		return base_transform
+
+	var muzzle: Node3D = active_weapon.get_node_or_null("MuzzleFlash") as Node3D
+	if muzzle == null:
+		return base_transform
+
+	var muzzle_camera_local: Vector3 = base_transform * muzzle.transform.origin
+	var corrected_origin: Vector3 = base_transform.origin
+	corrected_origin.x += weapon_crosshair_lateral_offset - muzzle_camera_local.x
+	var aligned_transform := Transform3D(base_transform.basis, corrected_origin)
+
+	if weapon_hold_mode == WeaponHoldMode.DOOM or align_weapon_muzzle_to_crosshair:
+		return aligned_transform
+
+	# Default: agarre lateral en reposo, alineación centrada al apuntar (click derecho).
+	return base_transform.interpolate_with(aligned_transform, _aim_blend)
 #endregion
 
 

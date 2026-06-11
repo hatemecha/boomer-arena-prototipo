@@ -145,6 +145,22 @@ layout_mode = 2
 text = "90"
 horizontal_alignment = 2
 
+[node name="WeaponHoldRow" type="HBoxContainer" parent="Center/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="WeaponHoldLabel" type="Label" parent="Center/Scroll/Content/WeaponHoldRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "ARMA"
+horizontal_alignment = 2
+
+[node name="WeaponHoldOption" type="OptionButton" parent="Center/Scroll/Content/WeaponHoldRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="CrosshairCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

@@ -501,9 +501,13 @@ func _on_lobby_join_requested(address: String, port: int) -> void:
 	_start_lan_join()
 
 
-func _on_lobby_practice_requested(time_of_day_preset: int, match_rules: Dictionary) -> void:
+func _on_lobby_practice_requested(time_of_day_preset: int, _match_rules: Dictionary) -> void:
 	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
-	_pending_match_rules = match_rules
+	_pending_match_rules = {
+		"win_mode": MatchManager.WinMode.PRACTICE,
+		"score_limit": 0,
+		"time_limit_seconds": 0.0,
+	}
 	_network_manager.disconnect_network(false)
 	_lan_discovery.stop_all()
 	_start_offline_match()
@@ -768,7 +772,7 @@ func _setup_local_hud(player: PlayerController) -> void:
 	if _hud_layer == null:
 		_hud_layer = CanvasLayer.new()
 		_hud_layer.name = "HUDLayer"
-		_hud_layer.layer = 100
+		_hud_layer.layer = 200
 		add_child(_hud_layer)
 
 	_hud_layer.add_child(hud)

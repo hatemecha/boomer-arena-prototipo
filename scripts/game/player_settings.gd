@@ -9,6 +9,7 @@ var display_name: String = "Player"
 var accent_color: Color = DEFAULT_ACCENT
 var crosshair_index: int = 0
 var crosshair_enabled: bool = true
+var weapon_hold_mode: int = PlayerController.WeaponHoldMode.DEFAULT
 var mouse_sensitivity: float = 0.25
 var fov: float = 90.0
 var fullscreen: bool = false
@@ -36,6 +37,7 @@ func load_settings() -> void:
 	accent_color = config.get_value("profile", "accent_color", accent_color)
 	crosshair_index = int(config.get_value("profile", "crosshair_index", crosshair_index))
 	crosshair_enabled = bool(config.get_value("profile", "crosshair_enabled", crosshair_enabled))
+	weapon_hold_mode = int(config.get_value("profile", "weapon_hold_mode", weapon_hold_mode))
 	mouse_sensitivity = float(config.get_value("input", "mouse_sensitivity", mouse_sensitivity))
 	fov = float(config.get_value("input", "fov", fov))
 	fullscreen = bool(config.get_value("video", "fullscreen", fullscreen))
@@ -54,6 +56,7 @@ func save_settings() -> void:
 	config.set_value("profile", "accent_color", accent_color)
 	config.set_value("profile", "crosshair_index", crosshair_index)
 	config.set_value("profile", "crosshair_enabled", crosshair_enabled)
+	config.set_value("profile", "weapon_hold_mode", weapon_hold_mode)
 	config.set_value("input", "mouse_sensitivity", mouse_sensitivity)
 	config.set_value("input", "fov", fov)
 	config.set_value("video", "fullscreen", fullscreen)
@@ -88,6 +91,7 @@ func apply_to_player(player: PlayerController) -> void:
 	player.mouse_sensitivity = clampf(mouse_sensitivity, 0.02, 0.50)
 	player.fov = clampf(fov, 75.0, 110.0)
 	player.aim_fov = minf(player.aim_fov, player.fov - 15.0)
+	player.weapon_hold_mode = clampi(weapon_hold_mode, 0, PlayerController.WeaponHoldMode.size() - 1) as PlayerController.WeaponHoldMode
 	if not display_name.strip_edges().is_empty():
 		player.display_name = display_name.strip_edges()
 
