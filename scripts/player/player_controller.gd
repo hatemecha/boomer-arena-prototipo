@@ -560,6 +560,7 @@ func _snap_spawn_position(spawn_position: Vector3) -> Vector3:
 		spawn_position + Vector3.DOWN * 8.0
 	)
 	query.exclude = [self]
+	query.hit_back_faces = false
 	var hit: Dictionary = space_state.intersect_ray(query)
 	if not hit.is_empty():
 		snapped_position.y = float(hit.position.y)

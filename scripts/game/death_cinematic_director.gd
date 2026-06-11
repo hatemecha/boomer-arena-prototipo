@@ -12,7 +12,7 @@ const CAMERA_END_LIFT: float = 0.55
 const FOCUS_HEIGHT: float = 0.72
 const FOLLOW_SMOOTHING: float = 24.0
 
-var _arena: TestArena
+var _arena: Node3D
 var _local_player: PlayerController
 var _cinematic_camera: Camera3D
 var _playing: bool = false
@@ -24,7 +24,7 @@ var _elapsed: float = 0.0
 var _duration: float = 0.0
 
 
-func setup(arena: TestArena) -> void:
+func setup(arena: Node3D) -> void:
 	_arena = arena
 
 

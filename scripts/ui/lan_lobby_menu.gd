@@ -1,9 +1,9 @@
 class_name LanLobbyMenu
 extends Control
 
-signal host_requested(port: int, time_of_day_preset: int, match_rules: Dictionary)
+signal host_requested(port: int, map_id: String, time_of_day_preset: int, match_rules: Dictionary)
 signal join_requested(address: String, port: int)
-signal practice_requested(time_of_day_preset: int, match_rules: Dictionary)
+signal practice_requested(map_id: String, time_of_day_preset: int, match_rules: Dictionary)
 signal disconnect_requested
 signal options_requested
 signal quit_game_requested
@@ -38,6 +38,7 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 @onready var address_edit: LineEdit = %AddressEdit
 @onready var port_spin: SpinBox = %PortSpin
 @onready var join_port_spin: SpinBox = %JoinPortSpin
+@onready var map_option: OptionButton = %MapOption
 @onready var time_of_day_option: OptionButton = %TimeOfDayOption
 @onready var win_mode_option: OptionButton = %WinModeOption
 @onready var limit_row: HBoxContainer = %LimitRow
@@ -56,6 +57,9 @@ var _current_screen: int = Screen.ENTRY
 var _setup_for_lan_host: bool = false
 var _local_addresses: PackedStringArray = []
 var _discovered_sessions: Array = []
+var _selected_map_id: String = ""
+var _pending_map_options: Array = []
+var _pending_selected_map_id: String = ""
 
 
 func _ready() -> void:
@@ -67,6 +71,8 @@ func _ready() -> void:
 	_connect_buttons()
 	_configure_time_of_day_options()
 	_configure_win_mode_options()
+	if not _pending_map_options.is_empty():
+		set_map_options(_pending_map_options, _pending_selected_map_id)
 	_update_setup_visibility()
 	_show_screen(Screen.ENTRY)
 	set_status("Elegí cómo entrar a la arena.")
@@ -126,14 +132,46 @@ func set_discovered_sessions(sessions: Array) -> void:
 			continue
 		var entry: Dictionary = session
 		var mode_text: String = "TIEMPO" if str(entry.get("mode", "kills")) == "time" else "BAJAS"
-		var label: String = "%s  ·  %s %d  ·  %d/%d" % [
+		var label: String = "%s  ·  %s  ·  %s %d  ·  %d/%d" % [
 			entry.get("name", "Partida"),
+			entry.get("map", "MAPA"),
 			mode_text,
 			int(entry.get("limit", 10)),
 			int(entry.get("players", 1)),
 			int(entry.get("max_players", 2)),
 		]
 		session_list.add_item(label)
+
+
+func set_map_options(map_options: Array, selected_map_id: String = "") -> void:
+	if map_option == null:
+		_pending_map_options = map_options.duplicate(true)
+		_pending_selected_map_id = selected_map_id
+		return
+
+	_pending_map_options.clear()
+	_pending_selected_map_id = ""
+	map_option.clear()
+	var selected_index: int = 0
+	for index in range(map_options.size()):
+		if not (map_options[index] is Dictionary):
+			continue
+		var option: Dictionary = map_options[index]
+		var map_id: String = str(option.get("id", ""))
+		var label: String = str(option.get("label", map_id)).to_upper()
+		if map_id.is_empty():
+			continue
+		map_option.add_item(label, index)
+		map_option.set_item_metadata(map_option.get_item_count() - 1, map_id)
+		if map_id == selected_map_id:
+			selected_index = map_option.get_item_count() - 1
+
+	if map_option.get_item_count() <= 0:
+		map_option.add_item("TEST ARENA", 0)
+		map_option.set_item_metadata(0, "test_arena")
+	if selected_index >= 0 and selected_index < map_option.get_item_count():
+		map_option.select(selected_index)
+	_selected_map_id = _get_selected_map_id()
 
 
 func focus_default() -> void:
@@ -183,7 +221,7 @@ func _on_practice_entry_pressed() -> void:
 	_setup_for_lan_host = false
 	_show_screen(Screen.SETUP)
 	_update_setup_visibility()
-	set_status("Elegí el horario del mapa.")
+	set_status("Elegí mapa y horario.")
 
 
 func _on_lan_entry_pressed() -> void:
@@ -208,7 +246,7 @@ func _on_start_setup_pressed() -> void:
 		return
 	set_busy(true)
 	set_status("Entrando en práctica...")
-	practice_requested.emit(_get_selected_time_of_day(), {})
+	practice_requested.emit(_get_selected_map_id(), _get_selected_time_of_day(), {})
 
 
 func _on_back_from_setup_pressed() -> void:
@@ -249,7 +287,7 @@ func _on_create_host_pressed() -> void:
 		return
 	set_busy(true)
 	set_status("Abriendo host LAN...")
-	host_requested.emit(port, _get_selected_time_of_day(), get_match_rules())
+	host_requested.emit(port, _get_selected_map_id(), _get_selected_time_of_day(), get_match_rules())
 
 
 func _on_back_from_host_pressed() -> void:
@@ -324,7 +362,9 @@ func _focus_current_screen() -> void:
 		Screen.ENTRY:
 			%PracticeButton.grab_focus()
 		Screen.SETUP:
-			if _setup_for_lan_host:
+			if map_option != null:
+				map_option.grab_focus()
+			elif _setup_for_lan_host:
 				%StartSetupButton.grab_focus()
 			elif time_of_day_option != null:
 				time_of_day_option.grab_focus()
@@ -353,6 +393,8 @@ func _set_screen_interactive(enabled: bool) -> void:
 		address_edit.editable = enabled
 	if time_of_day_option != null:
 		time_of_day_option.disabled = not enabled
+	if map_option != null:
+		map_option.disabled = not enabled
 	if win_mode_option != null:
 		win_mode_option.disabled = not enabled
 	if session_list != null:
@@ -422,3 +464,17 @@ func _get_selected_time_of_day() -> int:
 	if selected_id < 0:
 		return TIME_OF_DAY_NIGHT
 	return selected_id
+
+
+func _get_selected_map_id() -> String:
+	if map_option == null or map_option.get_item_count() <= 0:
+		return "test_arena"
+	var selected_index: int = map_option.selected
+	if selected_index < 0:
+		selected_index = 0
+	var metadata: Variant = map_option.get_item_metadata(selected_index)
+	var map_id: String = str(metadata).strip_edges()
+	if map_id.is_empty():
+		return "test_arena"
+	_selected_map_id = map_id
+	return map_id

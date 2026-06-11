@@ -16,6 +16,8 @@ enum LensPreset {
 
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 const EXTERIOR_SUN_LIGHT_NAME: StringName = &"ExteriorSunLight"
+## Debe quedar por encima del HUD (200) para que el filtro PSX afecte la interfaz.
+const POST_PROCESS_CANVAS_LAYER: int = 220
 
 signal lens_preset_changed(preset: LensPreset)
 signal visual_style_refreshed(time_of_day_preset: TimeOfDayPreset)
@@ -154,12 +156,13 @@ func clear_music_shader_override() -> void:
 
 func _ensure_post_process() -> void:
 	if _post_process_layer != null:
+		_post_process_layer.layer = POST_PROCESS_CANVAS_LAYER
 		_set_post_process_visible(post_process_enabled)
 		return
 
 	_post_process_layer = CanvasLayer.new()
 	_post_process_layer.name = "PSXPostProcess"
-	_post_process_layer.layer = 128
+	_post_process_layer.layer = POST_PROCESS_CANVAS_LAYER
 	add_child(_post_process_layer)
 
 	_post_process_rect = ColorRect.new()

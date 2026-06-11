@@ -5,6 +5,17 @@ const NetworkManagerScript: GDScript = preload("res://scripts/game/network_manag
 const LanDiscoveryScript: GDScript = preload("res://scripts/game/lan_discovery.gd")
 const ArenaMenuCameraScript: GDScript = preload("res://scripts/ui/arena_menu_camera.gd")
 const DeathCinematicDirectorScript: GDScript = preload("res://scripts/game/death_cinematic_director.gd")
+const FloorSnapScript: GDScript = preload("res://scripts/game/floor_snap.gd")
+const MAP_TEST_ARENA: String = "test_arena"
+const MAP_DOOM_E1M1: String = "doom_e1m1"
+const MAP_SCENES: Dictionary = {
+	MAP_DOOM_E1M1: preload("res://scenes/maps/IronHangarArena.tscn"),
+	MAP_TEST_ARENA: preload("res://scenes/maps/TestArena.tscn"),
+}
+const MAP_LABELS: Dictionary = {
+	MAP_DOOM_E1M1: "IRON HANGAR",
+	MAP_TEST_ARENA: "TEST ARENA",
+}
 
 @export var player_scene: PackedScene = preload("res://scenes/player/Player.tscn")
 @export var ammo_pickup_scene: PackedScene = preload("res://scenes/pickups/AmmoPickup.tscn")
@@ -55,12 +66,15 @@ var _lobby_options_menu: OptionsMenu
 var _match_result_overlay: Control
 var _match_result_layer: CanvasLayer
 var _death_cinematic: Node
-var _test_arena: TestArena
+var _active_arena: Node3D
+var _active_map_id: String = ""
+var _selected_map_id: String = MAP_DOOM_E1M1
 var _pending_match_rules: Dictionary = {}
 var _pending_match_result_winner_id: int = -1
 var _pending_death_cinematic_match_end: bool = false
 var _match_result_request_token: int = 0
 var _latest_death_corpse: Node3D
+var _spawned_targets: Array[Node3D] = []
 var _has_spawned_pickups: bool = false
 var _has_spawned_targets: bool = false
 var _has_spawned_music_stereo: bool = false
@@ -74,7 +88,7 @@ func _ready() -> void:
 	_visual_director = $PSXVisualDirector as PSXVisualDirector
 	_disco_director = $MusicDiscoDirector as MusicDiscoDirector
 	_setup_managers()
-	_spawn_world_content()
+	_activate_map(_selected_map_id, false)
 	_setup_network_manager()
 	_setup_lan_discovery()
 	_setup_menu_camera()
@@ -82,7 +96,6 @@ func _ready() -> void:
 	_setup_lobby_options_menu()
 	_setup_match_result_overlay()
 	_setup_death_cinematic()
-	call_deferred("_load_spawn_points_from_arena")
 	if PlayerSettings != null:
 		PlayerSettings.apply_to_visual_director(_visual_director)
 	_debug_draw_manager.bind_context(_spawn_manager, _pickup_spawner, players)
@@ -212,6 +225,8 @@ func _setup_lobby_menu() -> void:
 	_lobby_menu = lobby_menu
 
 	_lobby_menu.configure(default_lan_join_address, lan_port, _get_lan_addresses())
+	if _lobby_menu.has_method("set_map_options"):
+		_lobby_menu.call("set_map_options", _get_map_options(), _selected_map_id)
 	_lobby_menu.host_requested.connect(_on_lobby_host_requested)
 	_lobby_menu.join_requested.connect(_on_lobby_join_requested)
 	_lobby_menu.practice_requested.connect(_on_lobby_practice_requested)
@@ -224,18 +239,20 @@ func _setup_lobby_menu() -> void:
 
 
 func _load_spawn_points_from_arena() -> void:
-	_test_arena = get_node_or_null("TestArena") as TestArena
-	if _test_arena == null:
+	if _active_arena == null:
 		return
-	_spawn_manager.load_from_arena(_test_arena)
+	_spawn_manager.load_from_arena(_active_arena)
+	_pickup_spawner.load_from_arena(_active_arena)
 	if _death_cinematic != null and _death_cinematic.has_method("setup"):
-		_death_cinematic.call("setup", _test_arena)
+		_death_cinematic.call("setup", _active_arena)
 
 
 func _setup_death_cinematic() -> void:
 	_death_cinematic = DeathCinematicDirectorScript.new()
 	_death_cinematic.name = "DeathCinematicDirector"
 	add_child(_death_cinematic)
+	if _active_arena != null and _death_cinematic.has_method("setup"):
+		_death_cinematic.call("setup", _active_arena)
 
 
 func _setup_match_result_overlay() -> void:
@@ -291,6 +308,8 @@ func _show_lobby(status: String) -> void:
 		return
 
 	_lobby_menu.configure(default_lan_join_address, lan_port, _get_lan_addresses())
+	if _lobby_menu.has_method("set_map_options"):
+		_lobby_menu.call("set_map_options", _get_map_options(), _selected_map_id)
 	_lobby_menu.set_busy(false)
 	_lobby_menu.set_status(status)
 	_lobby_menu.visible = true
@@ -382,8 +401,101 @@ func _is_useful_lan_address(address: String) -> bool:
 
 
 #region Contenido del mundo y ciclo de partida
+func _get_map_options() -> Array[Dictionary]:
+	return [
+		{"id": MAP_DOOM_E1M1, "label": str(MAP_LABELS[MAP_DOOM_E1M1])},
+		{"id": MAP_TEST_ARENA, "label": str(MAP_LABELS[MAP_TEST_ARENA])},
+	]
+
+
+func _sanitize_map_id(map_id: String) -> String:
+	var clean_id: String = map_id.strip_edges().to_lower()
+	if MAP_SCENES.has(clean_id):
+		return clean_id
+	return MAP_DOOM_E1M1
+
+
+func _get_map_scene(map_id: String) -> PackedScene:
+	var safe_map_id: String = _sanitize_map_id(map_id)
+	return MAP_SCENES[safe_map_id] as PackedScene
+
+
+func _get_map_label(map_id: String) -> String:
+	var safe_map_id: String = _sanitize_map_id(map_id)
+	return str(MAP_LABELS.get(safe_map_id, safe_map_id))
+
+
+func _activate_map(map_id: String, should_spawn_world_content: bool = true) -> void:
+	var safe_map_id: String = _sanitize_map_id(map_id)
+	_selected_map_id = safe_map_id
+
+	if _active_arena != null and is_instance_valid(_active_arena) and _active_map_id == safe_map_id:
+		_finish_arena_activation.call_deferred(should_spawn_world_content)
+		return
+
+	_clear_world_content()
+	if _active_arena != null and is_instance_valid(_active_arena):
+		if _active_arena.get_parent() == self:
+			remove_child(_active_arena)
+		_active_arena.queue_free()
+
+	var map_scene: PackedScene = _get_map_scene(safe_map_id)
+	_active_arena = map_scene.instantiate() as Node3D
+	if _active_arena == null:
+		push_error("Map %s must instantiate as Node3D." % safe_map_id)
+		_active_map_id = ""
+		return
+
+	_active_map_id = safe_map_id
+	_active_arena.name = "ActiveArena"
+	add_child(_active_arena)
+	move_child(_active_arena, 0)
+	_finish_arena_activation.call_deferred(should_spawn_world_content)
+
+
+func _finish_arena_activation(should_spawn_world_content: bool) -> void:
+	if _active_arena == null or not is_instance_valid(_active_arena):
+		return
+	_load_spawn_points_from_arena()
+	if should_spawn_world_content:
+		_spawn_world_content()
+	_refresh_active_map_visuals()
+	_update_menu_presentation()
+
+
+func _refresh_active_map_visuals() -> void:
+	if _visual_director != null:
+		_visual_director.invalidate_scene_cache()
+		_visual_director.refresh_visual_style()
+	if _disco_director != null:
+		_disco_director.invalidate_baseline()
+
+
+func _clear_world_content() -> void:
+	if _pickup_spawner != null:
+		_pickup_spawner.clear_pickups()
+	for target in _spawned_targets:
+		if target != null and is_instance_valid(target):
+			if target.get_parent() == self:
+				remove_child(target)
+			target.queue_free()
+	_spawned_targets.clear()
+
+	if _music_stereo != null and is_instance_valid(_music_stereo):
+		if _music_stereo.get_parent() == self:
+			remove_child(_music_stereo)
+		_music_stereo.queue_free()
+	_music_stereo = null
+
+	_has_spawned_pickups = false
+	_has_spawned_targets = false
+	_has_spawned_music_stereo = false
+
+
 func _spawn_world_content() -> void:
 	if not _has_spawned_pickups:
+		if _active_arena != null:
+			_pickup_spawner.load_from_arena(_active_arena)
 		_pickup_spawner.spawn_pickups(self)
 		_register_pickups()
 		_has_spawned_pickups = true
@@ -401,12 +513,14 @@ func _reset_session() -> void:
 	_pending_death_cinematic_match_end = false
 	_pending_match_result_winner_id = -1
 	_latest_death_corpse = null
+	_clear_world_content()
 	_clear_players_and_interfaces()
 	_reset_player_maps()
 
 
 func _start_offline_match() -> void:
 	_reset_session()
+	_activate_map(_selected_map_id, true)
 	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_apply_match_rules(_pending_match_rules)
 	_match_manager.start_match()
@@ -427,10 +541,12 @@ func _start_network_match_as_server() -> void:
 		return
 
 	_reset_session()
+	_activate_map(_selected_map_id, true)
 	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
 	_apply_match_rules(_pending_match_rules)
 	_match_manager.start_match()
 	_register_network_peer(1)
+	_network_load_map.rpc(_selected_map_id)
 	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
 	_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	_sync_score_snapshot_to_peers()
@@ -484,8 +600,9 @@ func _sanitize_time_of_day_preset(time_of_day_preset: int) -> int:
 	return clampi(time_of_day_preset, 0, PSXVisualDirector.TimeOfDayPreset.size() - 1)
 
 
-func _on_lobby_host_requested(port: int, time_of_day_preset: int, match_rules: Dictionary) -> void:
+func _on_lobby_host_requested(port: int, map_id: String, time_of_day_preset: int, match_rules: Dictionary) -> void:
 	lan_port = port
+	_selected_map_id = _sanitize_map_id(map_id)
 	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
 	_pending_match_rules = match_rules
 	_network_manager.configure(lan_port, default_lan_join_address, maxi(max_lan_players - 1, 1))
@@ -501,7 +618,8 @@ func _on_lobby_join_requested(address: String, port: int) -> void:
 	_start_lan_join()
 
 
-func _on_lobby_practice_requested(time_of_day_preset: int, _match_rules: Dictionary) -> void:
+func _on_lobby_practice_requested(map_id: String, time_of_day_preset: int, _match_rules: Dictionary) -> void:
+	_selected_map_id = _sanitize_map_id(map_id)
 	_selected_time_of_day_preset = _sanitize_time_of_day_preset(time_of_day_preset)
 	_pending_match_rules = {
 		"win_mode": MatchManager.WinMode.PRACTICE,
@@ -588,7 +706,7 @@ func _start_lan_discovery_host() -> void:
 	_lan_discovery.start_hosting({
 		"name": "%s // BOOMER ARENA" % host_name,
 		"port": lan_port,
-		"map": "TestArena",
+		"map": _get_map_label(_selected_map_id),
 		"mode": mode_text,
 		"limit": limit_value,
 		"players": _get_peer_count(),
@@ -630,6 +748,8 @@ func _register_network_peer(peer_id: int) -> void:
 	_match_manager.ensure_player(player_id)
 
 	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
+	if peer_id != 1:
+		_network_load_map.rpc_id(peer_id, _selected_map_id)
 	_network_spawn_player.rpc(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
 	_network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(peer_id)
@@ -657,9 +777,8 @@ func _allocate_player_id() -> int:
 
 
 func _spawn_targets() -> void:
-	_spawn_target(Vector3(-7.0, 0.0, -8.0))
-	_spawn_target(Vector3(7.0, 0.0, 8.0))
-	_spawn_target(Vector3(0.0, 0.0, -5.5))
+	for target_position in _get_target_spawn_positions():
+		_spawn_target(target_position)
 
 
 func _spawn_target(spawn_position: Vector3) -> void:
@@ -668,7 +787,37 @@ func _spawn_target(spawn_position: Vector3) -> void:
 		push_error("Target scene must instantiate a Node3D.")
 		return
 	add_child(target)
-	target.global_position = spawn_position
+	target.global_position = _snap_world_position_to_floor(spawn_position)
+	_spawned_targets.append(target)
+
+
+func _snap_world_position_to_floor(spawn_position: Vector3) -> Vector3:
+	return FloorSnapScript.snap_to_floor(spawn_position, get_world_3d().direct_space_state)
+
+
+func _get_target_spawn_positions() -> Array[Vector3]:
+	var target_positions: Array[Vector3] = []
+	if _active_arena != null:
+		var target_root: Node = _active_arena.get_node_or_null("TargetSpawns")
+		if target_root != null:
+			for child in target_root.get_children():
+				if child is Node3D:
+					target_positions.append((child as Node3D).global_position)
+
+		if target_positions.is_empty():
+			for marker_node in _active_arena.find_children("*", "Node3D", true, false):
+				var marker := marker_node as Node3D
+				if marker != null and marker.is_in_group("target_spawns"):
+					target_positions.append(marker.global_position)
+
+	if not target_positions.is_empty():
+		return target_positions
+
+	return [
+		Vector3(-7.0, 0.0, -8.0),
+		Vector3(7.0, 0.0, 8.0),
+		Vector3(0.0, 0.0, -5.5),
+	]
 
 
 func _spawn_music_stereo() -> void:
@@ -678,8 +827,13 @@ func _spawn_music_stereo() -> void:
 		return
 
 	add_child(music_stereo)
-	music_stereo.global_position = Vector3(-9.5, 1.0, 9.5)
-	music_stereo.rotation_degrees.y = 42.0
+	var stereo_spawn: Node3D = _get_music_stereo_spawn_marker()
+	if stereo_spawn != null:
+		music_stereo.global_transform = stereo_spawn.global_transform
+		music_stereo.global_position = _snap_world_position_to_floor(stereo_spawn.global_position)
+	else:
+		music_stereo.global_position = _snap_world_position_to_floor(Vector3(-13.5, 0.0, 13.5))
+		music_stereo.rotation_degrees.y = -135.0
 	music_stereo.playback_toggle_requested.connect(_on_music_stereo_playback_toggle_requested)
 	music_stereo.next_track_requested.connect(_on_music_stereo_next_track_requested)
 	_music_stereo = music_stereo
@@ -688,6 +842,12 @@ func _spawn_music_stereo() -> void:
 			hud.bind_music_stereo(_music_stereo)
 	if _disco_director != null:
 		_disco_director.bind(_music_stereo, _visual_director)
+
+
+func _get_music_stereo_spawn_marker() -> Node3D:
+	if _active_arena == null:
+		return null
+	return _active_arena.get_node_or_null("MusicStereoSpawn") as Node3D
 
 
 func _register_pickups() -> void:
@@ -1555,6 +1715,11 @@ func _apply_network_respawn_player(peer_id: int, player_id: int, spawn_position:
 
 #region RPCs
 @rpc("authority", "call_local", "reliable")
+func _network_load_map(map_id: String) -> void:
+	_activate_map(map_id, true)
+
+
+@rpc("authority", "call_local", "reliable")
 func _network_spawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
 	_peer_to_player_id[peer_id] = player_id
 	_player_id_to_peer[player_id] = peer_id
@@ -1809,6 +1974,7 @@ func _request_full_sync() -> void:
 		return
 
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	_network_load_map.rpc_id(sender_peer_id, _selected_map_id)
 	_network_apply_time_of_day_preset.rpc_id(sender_peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(sender_peer_id)
 	_sync_pickups_to_peer(sender_peer_id)

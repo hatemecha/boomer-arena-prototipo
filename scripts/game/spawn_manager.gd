@@ -16,16 +16,16 @@ func load_from_arena(arena: Node3D) -> void:
 		return
 
 	var loaded_points: Array[Transform3D] = []
-	for marker in arena.get_tree().get_nodes_in_group("spawn_points"):
-		if marker is Node3D:
-			loaded_points.append((marker as Node3D).global_transform)
+	var spawn_root: Node = arena.get_node_or_null("SpawnPoints")
+	if spawn_root != null:
+		for child in spawn_root.get_children():
+			if child is Node3D:
+				loaded_points.append((child as Node3D).global_transform)
 
 	if loaded_points.is_empty():
-		var spawn_root: Node = arena.get_node_or_null("SpawnPoints")
-		if spawn_root != null:
-			for child in spawn_root.get_children():
-				if child is Node3D:
-					loaded_points.append((child as Node3D).global_transform)
+		for marker in arena.find_children("*", "Node3D", true, false):
+			if marker is Node3D and marker.is_in_group("spawn_points"):
+				loaded_points.append((marker as Node3D).global_transform)
 
 	if loaded_points.is_empty():
 		return
