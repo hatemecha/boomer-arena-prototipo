@@ -3,6 +3,7 @@ extends Area3D
 
 signal availability_changed(pickup_id: int, is_available: bool)
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const OUTLINE_SHADER: Shader = preload("res://shaders/pickup_outline.gdshader")
 
 @export_range(0.1, 120.0) var respawn_time: float = 15.0
@@ -53,12 +54,10 @@ func _ready() -> void:
 	_setup_pickup_outlines()
 	_pulse_time = randf() * TAU
 
-	if PlayerSettings != null and not PlayerSettings.settings_changed.is_connected(_update_accent_color):
-		PlayerSettings.settings_changed.connect(_update_accent_color)
-	if PlayerSettings != null:
-		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
-			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
-		apply_performance_profile(int(PlayerSettings.performance_profile))
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_settings_changed(_update_accent_color)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
+		apply_performance_profile(PlayerSettingsAccess.get_performance_profile())
 
 
 func _process(delta: float) -> void:
@@ -118,10 +117,10 @@ func can_player_collect_now(player: PlayerController) -> bool:
 func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	match safe_profile:
-		PlayerSettings.PerformanceProfile.LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
 			_presentation_update_hz = 20.0
 			_dynamic_glow_enabled = true
-		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
 			_presentation_update_hz = 10.0
 			_dynamic_glow_enabled = false
 		_:
@@ -144,6 +143,16 @@ func collect_for_player(player: PlayerController) -> bool:
 
 func set_network_available(is_next_available: bool) -> void:
 	_set_available(is_next_available, false)
+
+
+func apply_confirmed_network_collect(player: PlayerController) -> bool:
+	if player == null:
+		return false
+
+	var was_applied: bool = apply_to_player(player)
+	_play_pickup_sound()
+	_set_available(false, false)
+	return was_applied
 
 
 func _on_body_entered(body: Node3D) -> void:
@@ -192,8 +201,9 @@ func _update_hold_interaction(delta: float) -> void:
 	_hold_progress = 0.0
 	_active_player = null
 	_clear_player_pickup_interaction(collector)
-	if collect_for_player(collector):
-		_request_network_pickup(collector)
+	if _request_network_pickup(collector):
+		return
+	collect_for_player(collector)
 
 
 func _select_interacting_player() -> PlayerController:
@@ -279,14 +289,14 @@ func _set_available(is_next_available: bool, should_emit_signal: bool) -> void:
 		availability_changed.emit(pickup_id, _is_available)
 
 
-func _request_network_pickup(player: PlayerController) -> void:
+func _request_network_pickup(player: PlayerController) -> bool:
 	if player == null or pickup_id < 0:
-		return
+		return false
 
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null or not scene_root.has_method("request_network_pickup"):
-		return
-	scene_root.call("request_network_pickup", pickup_id, player.player_id)
+		return false
+	return bool(scene_root.call("request_network_pickup", pickup_id, player.player_id))
 
 
 func _play_pickup_sound() -> void:

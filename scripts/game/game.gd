@@ -1,10 +1,8 @@
 class_name Game
 extends Node3D
 
-const NetworkManagerScript: GDScript = preload("res://scripts/game/network_manager.gd")
-const LanDiscoveryScript: GDScript = preload("res://scripts/game/lan_discovery.gd")
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const ArenaMenuCameraScript: GDScript = preload("res://scripts/ui/arena_menu_camera.gd")
-const DeathCinematicDirectorScript: GDScript = preload("res://scripts/game/death_cinematic_director.gd")
 const FloorSnapScript: GDScript = preload("res://scripts/game/floor_snap.gd")
 const MAP_TEST_ARENA: String = "test_arena"
 const MAP_DOOM_E1M1: String = "doom_e1m1"
@@ -42,14 +40,14 @@ var _hud_layer: CanvasLayer
 var _options_layer: CanvasLayer
 var _options_menu: OptionsMenu
 var _lobby_layer: CanvasLayer
-var _lobby_menu
+var _lobby_menu: LanLobbyMenu
 var _visual_director: PSXVisualDirector
 var _disco_director: MusicDiscoDirector
 var _spawn_manager: SpawnManager
 var _pickup_spawner: PickupSpawner
 var _match_manager: MatchManager
 var _debug_draw_manager: ArenaDebugDrawManager
-var _network_manager: Node
+var _network_manager: NetworkManager
 var _peer_to_player_id: Dictionary = {}
 var _player_id_to_peer: Dictionary = {}
 var _next_player_id: int = 1
@@ -61,11 +59,11 @@ var _network_status_text: String = "OFFLINE"
 var _hud_player: PlayerController
 var _music_stereo: MusicStereo
 var _menu_camera: Camera3D
-var _lan_discovery: Node
+var _lan_discovery: LanDiscovery
 var _lobby_options_menu: OptionsMenu
-var _match_result_overlay: Control
+var _match_result_overlay: MatchResultOverlay
 var _match_result_layer: CanvasLayer
-var _death_cinematic: Node
+var _death_cinematic: DeathCinematicDirector
 var _active_arena: Node3D
 var _active_map_id: String = ""
 var _selected_map_id: String = MAP_DOOM_E1M1
@@ -96,10 +94,9 @@ func _ready() -> void:
 	_setup_lobby_options_menu()
 	_setup_match_result_overlay()
 	_setup_death_cinematic()
-	if PlayerSettings != null:
-		PlayerSettings.apply_to_visual_director(_visual_director)
-		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
-			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.apply_to_visual_director(_visual_director)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_debug_draw_manager.bind_context(_spawn_manager, _pickup_spawner, players)
 
 	var started_from_args: bool = _network_manager.apply_startup_args()
@@ -123,8 +120,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_performance_profile_changed(_profile: int) -> void:
-	if PlayerSettings != null:
-		PlayerSettings.apply_to_visual_director(_visual_director)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.apply_to_visual_director(_visual_director)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -204,7 +201,7 @@ func _setup_managers() -> void:
 
 
 func _setup_network_manager() -> void:
-	_network_manager = NetworkManagerScript.new()
+	_network_manager = NetworkManager.new()
 	_network_manager.name = "NetworkManager"
 	_network_manager.configure(lan_port, default_lan_join_address, maxi(max_lan_players - 1, 1))
 	add_child(_network_manager)
@@ -255,7 +252,7 @@ func _load_spawn_points_from_arena() -> void:
 
 
 func _setup_death_cinematic() -> void:
-	_death_cinematic = DeathCinematicDirectorScript.new()
+	_death_cinematic = DeathCinematicDirector.new()
 	_death_cinematic.name = "DeathCinematicDirector"
 	add_child(_death_cinematic)
 	if _active_arena != null and _death_cinematic.has_method("setup"):
@@ -285,7 +282,7 @@ func _setup_match_result_overlay() -> void:
 
 
 func _setup_lan_discovery() -> void:
-	_lan_discovery = LanDiscoveryScript.new()
+	_lan_discovery = LanDiscovery.new()
 	_lan_discovery.name = "LanDiscovery"
 	add_child(_lan_discovery)
 	_lan_discovery.session_list_changed.connect(_on_lan_sessions_changed)
@@ -709,7 +706,7 @@ func _start_lan_discovery_host() -> void:
 		return
 	var mode_text: String = "time" if _match_manager.win_mode == MatchManager.WinMode.TIME_LIMIT else "kills"
 	var limit_value: int = int(_match_manager.time_limit_seconds / 60.0) if mode_text == "time" else _match_manager.score_limit
-	var host_name: String = PlayerSettings.display_name if PlayerSettings != null else "Host"
+	var host_name: String = PlayerSettingsAccess.get_display_name("Host")
 	_lan_discovery.start_hosting({
 		"name": "%s // BOOMER ARENA" % host_name,
 		"port": lan_port,
@@ -886,15 +883,15 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 
 	player.player_id = player_id
 	var is_local_player: bool = _is_local_peer(peer_id)
-	if is_local_player and PlayerSettings != null and not PlayerSettings.display_name.strip_edges().is_empty():
-		player.display_name = PlayerSettings.display_name.strip_edges()
+	if is_local_player and not PlayerSettingsAccess.get_display_name("").is_empty():
+		player.display_name = PlayerSettingsAccess.get_display_name("")
 	else:
 		player.display_name = "Player %d" % player_id
 	_match_manager.set_player_name(player_id, player.display_name)
 	if _is_networked() and multiplayer.is_server():
 		_network_sync_player_display_name.rpc(player_id, player.display_name)
-	if is_local_player and PlayerSettings != null:
-		PlayerSettings.apply_to_player(player)
+	if is_local_player and PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.apply_to_player(player)
 	player.input_prefix = ""
 	player.mouse_look_enabled = true
 	player.set_multiplayer_authority(peer_id)
@@ -916,7 +913,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 		_setup_local_hud(player)
 		_setup_options_menu()
 		_hide_lobby()
-		if _is_networked():
+		if _is_networked() and not multiplayer.is_server():
 			_network_report_display_name.rpc_id(1, player_id, player.display_name)
 
 	return player
@@ -995,9 +992,10 @@ func _setup_options_menu() -> void:
 	_options_menu.respawn_requested.connect(_on_options_respawn_requested)
 	_options_menu.leave_match_requested.connect(_on_leave_match_requested)
 	_options_menu.quit_game_requested.connect(_on_quit_game_requested)
-	if PlayerSettings != null:
-		_huds[0].rebuild_crosshair(PlayerSettings.crosshair_index >= 0, maxi(PlayerSettings.crosshair_index, 0))
-		_huds[0].set_crosshair_enabled(PlayerSettings.crosshair_enabled)
+	if PlayerSettingsAccess.has_settings():
+		var crosshair_index: int = PlayerSettingsAccess.get_int(&"crosshair_index", 0)
+		_huds[0].rebuild_crosshair(crosshair_index >= 0, maxi(crosshair_index, 0))
+		_huds[0].set_crosshair_enabled(PlayerSettingsAccess.get_bool(&"crosshair_enabled", true))
 
 
 func _on_leave_match_requested() -> void:
@@ -1055,6 +1053,13 @@ func _send_local_player_state() -> void:
 
 
 func _process_network_ping(delta: float) -> void:
+	if (
+		not multiplayer.is_server()
+		and multiplayer.multiplayer_peer != null
+		and multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED
+	):
+		return
+
 	_ping_accumulator += delta
 	if _ping_accumulator < ping_interval:
 		return
@@ -1192,7 +1197,11 @@ func _apply_player_damage(victim_player_id: int, amount: int, attacker_player_id
 	victim.apply_damage(amount, attacker_player_id)
 
 
-func _apply_player_pickup(pickup_id: int, player_id: int) -> void:
+func _apply_player_pickup(pickup_id: int, player_id: int, requesting_peer_id: int = 0) -> void:
+	if requesting_peer_id > 0 and int(_peer_to_player_id.get(requesting_peer_id, 0)) != player_id:
+		push_warning("Rejected pickup request from peer %d." % requesting_peer_id)
+		return
+
 	var pickup: PickupBase = _get_pickup_by_id(pickup_id)
 	if pickup == null or not pickup.is_available():
 		return
@@ -1204,6 +1213,9 @@ func _apply_player_pickup(pickup_id: int, player_id: int) -> void:
 		return
 
 	if pickup.collect_for_player(player):
+		var owner_peer_id: int = _get_peer_id_for_player(player)
+		if _is_networked() and multiplayer.is_server() and owner_peer_id > 1:
+			_network_confirm_pickup_collected.rpc_id(owner_peer_id, pickup_id, player_id)
 		_sync_player_health_to_peers(player)
 #endregion
 
@@ -1824,6 +1836,18 @@ func _network_set_pickup_available(pickup_id: int, is_available: bool) -> void:
 
 
 @rpc("authority", "reliable")
+func _network_confirm_pickup_collected(pickup_id: int, player_id: int) -> void:
+	var player: PlayerController = _get_player_by_player_id(player_id)
+	if player == null or not _is_local_peer(_get_peer_id_for_player(player)):
+		return
+
+	var pickup: PickupBase = _get_pickup_by_id(pickup_id)
+	if pickup == null:
+		return
+	pickup.apply_confirmed_network_collect(player)
+
+
+@rpc("authority", "reliable")
 func _network_match_finished(winner_id: int) -> void:
 	_pending_match_result_winner_id = winner_id
 	_match_manager.apply_match_finished(winner_id)
@@ -1948,7 +1972,7 @@ func _server_request_pickup(pickup_id: int, player_id: int) -> void:
 	if expected_player_id <= 0 or expected_player_id != player_id:
 		push_warning("Rejected pickup request from peer %d." % sender_peer_id)
 		return
-	_apply_player_pickup(pickup_id, player_id)
+	_apply_player_pickup(pickup_id, player_id, sender_peer_id)
 
 
 @rpc("any_peer", "reliable")

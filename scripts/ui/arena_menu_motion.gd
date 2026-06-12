@@ -15,14 +15,6 @@ func bind(root: Control) -> void:
 		_configure_interactive_controls()
 
 
-func play_open() -> void:
-	pass
-
-
-func update(_delta: float) -> void:
-	pass
-
-
 func _configure_interactive_controls() -> void:
 	if _root == null:
 		return

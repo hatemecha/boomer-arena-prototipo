@@ -1,6 +1,8 @@
 class_name HUD
 extends Control
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 @export var hud_motion_enabled: bool = true
 @export_range(0.0, 16.0) var hud_move_sway_px: float = 7.0
 @export_range(0.0, 2.0) var hud_look_sway_px: float = 0.55
@@ -136,12 +138,10 @@ func _ready() -> void:
 		pickup_interaction_panel.visible = false
 	apply_accent_theme()
 	_cache_crosshair_capabilities()
-	if PlayerSettings != null:
-		if not PlayerSettings.settings_changed.is_connected(apply_accent_theme):
-			PlayerSettings.settings_changed.connect(apply_accent_theme)
-		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
-			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
-		apply_performance_profile(int(PlayerSettings.performance_profile))
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_settings_changed(apply_accent_theme)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
+		apply_performance_profile(PlayerSettingsAccess.get_performance_profile())
 
 
 func apply_accent_theme() -> void:
@@ -676,7 +676,7 @@ func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
 
 
 func _is_ultra_low_hud() -> bool:
-	return _performance_profile == PlayerSettings.PerformanceProfile.ULTRA_LOW
+	return _performance_profile == PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW
 
 
 func _apply_hud_profile_static_offsets() -> void:

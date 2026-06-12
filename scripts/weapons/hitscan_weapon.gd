@@ -1,6 +1,7 @@
 class_name HitscanWeapon
 extends WeaponBase
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const BULLET_SCENE: PackedScene = preload("res://assets/models/vfx/low_poly_bullet.glb")
 
 @export var hit_marker_duration: float = 0.08
@@ -35,8 +36,8 @@ var _defaults_cached: bool = false
 func _ready() -> void:
 	super()
 	_cache_default_performance_values()
-	if PlayerSettings != null:
-		apply_performance_profile(int(PlayerSettings.performance_profile))
+	if PlayerSettingsAccess.has_settings():
+		apply_performance_profile(PlayerSettingsAccess.get_performance_profile())
 
 
 func try_fire(camera: Camera3D) -> bool:
@@ -59,7 +60,7 @@ func apply_performance_profile(profile: int) -> void:
 	_cache_default_performance_values()
 	var safe_profile := clampi(profile, 0, 2)
 	match safe_profile:
-		PlayerSettings.PerformanceProfile.LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
 			impact_lifetime = minf(_default_impact_lifetime, 0.35)
 			decal_lifetime = minf(_default_decal_lifetime, 3.0)
 			max_active_impacts = mini(_default_max_active_impacts, 24)
@@ -67,7 +68,7 @@ func apply_performance_profile(profile: int) -> void:
 			bullet_bounce_lifetime = minf(_default_bullet_bounce_lifetime, 0.9)
 			bullet_bounce_distance = _default_bullet_bounce_distance
 			bullet_bounce_enabled = true
-		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
 			impact_lifetime = minf(_default_impact_lifetime, 0.25)
 			decal_lifetime = minf(_default_decal_lifetime, 1.8)
 			max_active_impacts = mini(_default_max_active_impacts, 8)

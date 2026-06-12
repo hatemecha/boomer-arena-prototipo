@@ -1,6 +1,8 @@
 class_name LanLobbyMenu
 extends Control
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 signal host_requested(port: int, map_id: String, time_of_day_preset: int, match_rules: Dictionary)
 signal join_requested(address: String, port: int)
 signal practice_requested(map_id: String, time_of_day_preset: int, match_rules: Dictionary)
@@ -85,15 +87,10 @@ func _ready() -> void:
 	_update_setup_visibility()
 	_show_screen(Screen.ENTRY)
 	set_status("Elegí cómo entrar a la arena.")
-	if PlayerSettings != null:
-		PlayerSettings.settings_changed.connect(_on_settings_changed)
-		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_settings_changed(_on_settings_changed)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
-
-
-func _process(delta: float) -> void:
-	if _menu_motion != null:
-		_menu_motion.update(delta)
 
 
 func configure(default_address: String, default_port: int, local_addresses: PackedStringArray) -> void:
@@ -186,8 +183,6 @@ func set_map_options(map_options: Array, selected_map_id: String = "") -> void:
 
 
 func focus_default() -> void:
-	if _menu_motion != null:
-		_menu_motion.play_open()
 	_focus_current_screen()
 
 
@@ -469,7 +464,7 @@ func _update_win_mode_ui() -> void:
 
 
 func _apply_menu_profile_layout() -> void:
-	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
 	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
 	var content_separation: int = ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION
 	var screen_separation: int = ULTRA_LOW_SCREEN_SEPARATION if use_ultra_low_layout else DEFAULT_SCREEN_SEPARATION

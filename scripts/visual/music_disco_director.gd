@@ -1,6 +1,8 @@
 class_name MusicDiscoDirector
 extends Node
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 @export var enabled: bool = true
 @export_range(0.0, 1.0) var intensity: float = 1.0
 @export_range(0.0, 4.0) var fade_in_duration: float = 1.5
@@ -96,10 +98,9 @@ func _ready() -> void:
 	set_process(false)
 	_palette_extractor = CoverPaletteExtractor.new()
 	_palette = _palette_extractor.get_fallback_palette()
-	if PlayerSettings != null:
-		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
-			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
-		apply_performance_profile(int(PlayerSettings.performance_profile))
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
+		apply_performance_profile(PlayerSettingsAccess.get_performance_profile())
 
 
 func bind(music_stereo: MusicStereo, visual_director: PSXVisualDirector) -> void:
@@ -154,10 +155,10 @@ func _process(delta: float) -> void:
 func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	match safe_profile:
-		PlayerSettings.PerformanceProfile.LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
 			update_rate_hz = 20.0
 			_dynamic_light_blend_enabled = true
-		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
 			update_rate_hz = 10.0
 			_dynamic_light_blend_enabled = false
 		_:

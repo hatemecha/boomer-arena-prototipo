@@ -1,6 +1,8 @@
 class_name MuzzleFlashVFX
 extends Node3D
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 ## Four-layer GPU muzzle flash. Attach this scene to a weapon muzzle and call trigger_shot().
 
 const MAIN_FLASH_LAYER := "MuzzlePlanes"
@@ -26,8 +28,8 @@ var _performance_profile: int = 0
 
 
 func _ready() -> void:
-	if PlayerSettings != null:
-		_performance_profile = int(PlayerSettings.performance_profile)
+	if PlayerSettingsAccess.has_settings():
+		_performance_profile = PlayerSettingsAccess.get_performance_profile()
 
 
 func trigger_shot() -> void:

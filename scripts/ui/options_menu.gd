@@ -1,6 +1,8 @@
 class_name OptionsMenu
 extends Control
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 signal resume_requested
 signal respawn_requested
 signal leave_match_requested
@@ -67,7 +69,6 @@ var _time_preset_row_initial_visible: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	set_process(false)
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
 	ArenaMenuStyleScript.apply_to_menu(self)
@@ -77,15 +78,10 @@ func _ready() -> void:
 	_populate_options()
 	_connect_controls()
 	_configure_dev_buttons()
-	if PlayerSettings != null:
-		PlayerSettings.settings_changed.connect(_on_player_settings_changed)
-		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_settings_changed(_on_player_settings_changed)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
-
-
-func _process(delta: float) -> void:
-	if _menu_motion != null:
-		_menu_motion.update(delta)
 
 
 func _configure_dev_buttons() -> void:
@@ -133,21 +129,17 @@ func _update_mode_visibility() -> void:
 func open() -> void:
 	_sync_controls_from_game()
 	visible = true
-	set_process(true)
 	get_tree().paused = _in_match
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if _in_match:
 		resume_button.grab_focus()
 	else:
 		back_button.grab_focus()
-	if _menu_motion != null:
-		_menu_motion.play_open()
 	menu_visibility_changed.emit(true)
 
 
 func close() -> void:
 	visible = false
-	set_process(false)
 	get_tree().paused = false
 	if _in_match:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -163,9 +155,9 @@ func toggle() -> void:
 
 func _populate_options() -> void:
 	performance_profile_option.clear()
-	performance_profile_option.add_item("Default", PlayerSettings.PerformanceProfile.DEFAULT)
-	performance_profile_option.add_item("Low", PlayerSettings.PerformanceProfile.LOW)
-	performance_profile_option.add_item("Ultra Low", PlayerSettings.PerformanceProfile.ULTRA_LOW)
+	performance_profile_option.add_item("Default", PlayerSettingsAccess.PERFORMANCE_PROFILE_DEFAULT)
+	performance_profile_option.add_item("Low", PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW)
+	performance_profile_option.add_item("Ultra Low", PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW)
 
 	frame_limit_option.clear()
 	frame_limit_option.add_item("Sin límite", 0)
@@ -246,21 +238,21 @@ func _connect_controls() -> void:
 func _sync_controls_from_game() -> void:
 	_is_syncing_controls = true
 
-	if PlayerSettings != null:
-		name_edit.text = PlayerSettings.display_name
-		accent_picker.color = PlayerSettings.accent_color
-		mouse_sensitivity_slider.value = PlayerSettings.mouse_sensitivity
-		fov_slider.value = PlayerSettings.fov
-		_select_crosshair_style(PlayerSettings.crosshair_index)
-		crosshair_check.button_pressed = PlayerSettings.crosshair_enabled
-		_select_option_by_id(weapon_hold_option, PlayerSettings.weapon_hold_mode)
-		fullscreen_check.button_pressed = PlayerSettings.fullscreen
-		vsync_check.button_pressed = PlayerSettings.vsync
-		_select_option_by_id(performance_profile_option, int(PlayerSettings.performance_profile))
-		_select_frame_limit(PlayerSettings.fps_cap)
-		psx_filter_check.button_pressed = PlayerSettings.psx_filter_enabled
-		_select_option_by_id(time_preset_option, PlayerSettings.time_of_day_preset)
-		_select_option_by_id(lens_preset_option, PlayerSettings.lens_preset)
+	if PlayerSettingsAccess.has_settings():
+		name_edit.text = PlayerSettingsAccess.get_string(&"display_name", "Player")
+		accent_picker.color = PlayerSettingsAccess.get_accent_color()
+		mouse_sensitivity_slider.value = PlayerSettingsAccess.get_float(&"mouse_sensitivity", 0.25)
+		fov_slider.value = PlayerSettingsAccess.get_float(&"fov", 90.0)
+		_select_crosshair_style(PlayerSettingsAccess.get_int(&"crosshair_index", 0))
+		crosshair_check.button_pressed = PlayerSettingsAccess.get_bool(&"crosshair_enabled", true)
+		_select_option_by_id(weapon_hold_option, PlayerSettingsAccess.get_int(&"weapon_hold_mode", PlayerController.WeaponHoldMode.DEFAULT))
+		fullscreen_check.button_pressed = PlayerSettingsAccess.get_bool(&"fullscreen", false)
+		vsync_check.button_pressed = PlayerSettingsAccess.get_bool(&"vsync", false)
+		_select_option_by_id(performance_profile_option, PlayerSettingsAccess.get_performance_profile())
+		_select_frame_limit(PlayerSettingsAccess.get_int(&"fps_cap", 0))
+		psx_filter_check.button_pressed = PlayerSettingsAccess.get_bool(&"psx_filter_enabled", true)
+		_select_option_by_id(time_preset_option, PlayerSettingsAccess.get_int(&"time_of_day_preset", PSXVisualDirector.TimeOfDayPreset.NIGHT))
+		_select_option_by_id(lens_preset_option, PlayerSettingsAccess.get_int(&"lens_preset", PSXVisualDirector.LensPreset.PSX_8MM))
 		_update_psx_option_visibility()
 	elif _player != null:
 		mouse_sensitivity_slider.value = _player.mouse_sensitivity
@@ -274,7 +266,7 @@ func _sync_controls_from_game() -> void:
 		_update_mouse_sensitivity_label(mouse_sensitivity_slider.value)
 		_update_fov_label(fov_slider.value)
 
-	if _visual_director != null and PlayerSettings == null:
+	if _visual_director != null and not PlayerSettingsAccess.has_settings():
 		psx_filter_check.button_pressed = _visual_director.post_process_enabled
 		_select_option_by_id(time_preset_option, _visual_director.time_of_day_preset)
 		_select_option_by_id(lens_preset_option, _visual_director.lens_preset)
@@ -337,12 +329,13 @@ func _on_quit_game_pressed() -> void:
 
 
 func _on_name_changed(new_text: String) -> void:
-	if _is_syncing_controls or PlayerSettings == null:
+	if _is_syncing_controls or not PlayerSettingsAccess.has_settings():
 		return
-	PlayerSettings.display_name = new_text.strip_edges()
-	if _player != null and not PlayerSettings.display_name.is_empty():
-		_player.display_name = PlayerSettings.display_name
-	PlayerSettings.save_settings()
+	var clean_name: String = new_text.strip_edges()
+	PlayerSettingsAccess.set_value(&"display_name", clean_name)
+	if _player != null and not clean_name.is_empty():
+		_player.display_name = clean_name
+	PlayerSettingsAccess.save_settings()
 
 
 func _on_accent_picker_pressed() -> void:
@@ -350,8 +343,8 @@ func _on_accent_picker_pressed() -> void:
 
 
 func _on_accent_about_to_popup() -> void:
-	if PlayerSettings != null:
-		_accent_before_edit = PlayerSettings.accent_color
+	if PlayerSettingsAccess.has_settings():
+		_accent_before_edit = PlayerSettingsAccess.get_accent_color()
 	call_deferred("_style_accent_picker_popup")
 
 
@@ -364,13 +357,13 @@ func _style_accent_picker_popup() -> void:
 
 
 func _on_accent_popup_hidden() -> void:
-	if _accent_edit_committed or PlayerSettings == null:
+	if _accent_edit_committed or not PlayerSettingsAccess.has_settings():
 		return
 	_commit_accent_color(accent_picker.color)
 
 
 func _on_accent_changed(color: Color) -> void:
-	if _is_syncing_controls or PlayerSettings == null:
+	if _is_syncing_controls or not PlayerSettingsAccess.has_settings():
 		return
 	_apply_accent_preview(color)
 
@@ -383,11 +376,11 @@ func _apply_accent_preview(color: Color) -> void:
 
 
 func _commit_accent_color(color: Color) -> void:
-	if PlayerSettings == null:
+	if not PlayerSettingsAccess.has_settings():
 		return
 	_accent_edit_committed = true
-	PlayerSettings.accent_color = color
-	PlayerSettings.save_settings()
+	PlayerSettingsAccess.set_value(&"accent_color", color)
+	PlayerSettingsAccess.save_settings()
 	_apply_accent_preview(color)
 
 
@@ -395,8 +388,8 @@ func _cancel_accent_edit() -> void:
 	accent_picker.get_popup().hide()
 	accent_picker.color = _accent_before_edit
 	_apply_accent_preview(_accent_before_edit)
-	if PlayerSettings != null:
-		PlayerSettings.accent_color = _accent_before_edit
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"accent_color", _accent_before_edit)
 
 
 func _is_accent_popup_open() -> bool:
@@ -405,10 +398,10 @@ func _is_accent_popup_open() -> bool:
 
 
 func _on_crosshair_style_selected(index: int) -> void:
-	if _is_syncing_controls or PlayerSettings == null:
+	if _is_syncing_controls or not PlayerSettingsAccess.has_settings():
 		return
-	PlayerSettings.crosshair_index = crosshair_style_option.get_item_id(index)
-	PlayerSettings.save_settings()
+	PlayerSettingsAccess.set_value(&"crosshair_index", crosshair_style_option.get_item_id(index))
+	PlayerSettingsAccess.save_settings()
 	_apply_crosshair_style()
 
 
@@ -422,38 +415,40 @@ func _on_player_settings_changed() -> void:
 
 
 func _apply_crosshair_style() -> void:
-	if _hud == null or PlayerSettings == null:
+	if _hud == null or not PlayerSettingsAccess.has_settings():
 		return
-	var use_sprite: bool = PlayerSettings.crosshair_index >= 0
-	_hud.rebuild_crosshair(use_sprite, maxi(PlayerSettings.crosshair_index, 0))
-	_hud.set_crosshair_enabled(PlayerSettings.crosshair_enabled)
+	var crosshair_index: int = PlayerSettingsAccess.get_int(&"crosshair_index", 0)
+	var use_sprite: bool = crosshair_index >= 0
+	_hud.rebuild_crosshair(use_sprite, maxi(crosshair_index, 0))
+	_hud.set_crosshair_enabled(PlayerSettingsAccess.get_bool(&"crosshair_enabled", true))
 
 
 func _save_player_settings() -> void:
-	if PlayerSettings == null:
+	if not PlayerSettingsAccess.has_settings():
 		return
-	PlayerSettings.mouse_sensitivity = clampf(mouse_sensitivity_slider.value, 0.02, 0.50)
-	PlayerSettings.fov = clampf(fov_slider.value, 75.0, 110.0)
-	PlayerSettings.fullscreen = fullscreen_check.button_pressed
-	PlayerSettings.vsync = vsync_check.button_pressed
-	PlayerSettings.performance_profile = performance_profile_option.get_item_id(
-		performance_profile_option.selected
-	) as PlayerSettings.PerformanceProfile
-	PlayerSettings.fps_cap = frame_limit_option.get_item_id(frame_limit_option.selected)
-	PlayerSettings.psx_filter_enabled = psx_filter_check.button_pressed
-	PlayerSettings.lens_preset = lens_preset_option.get_item_id(lens_preset_option.selected)
-	PlayerSettings.crosshair_enabled = crosshair_check.button_pressed
-	PlayerSettings.weapon_hold_mode = weapon_hold_option.get_item_id(weapon_hold_option.selected)
-	PlayerSettings.save_settings()
-	PlayerSettings.apply_display_settings()
+	PlayerSettingsAccess.set_value(&"mouse_sensitivity", clampf(mouse_sensitivity_slider.value, 0.02, 0.50))
+	PlayerSettingsAccess.set_value(&"fov", clampf(fov_slider.value, 75.0, 110.0))
+	PlayerSettingsAccess.set_value(&"fullscreen", fullscreen_check.button_pressed)
+	PlayerSettingsAccess.set_value(&"vsync", vsync_check.button_pressed)
+	PlayerSettingsAccess.set_value(
+		&"performance_profile",
+		PlayerSettingsAccess.sanitize_performance_profile(performance_profile_option.get_item_id(performance_profile_option.selected))
+	)
+	PlayerSettingsAccess.set_value(&"fps_cap", frame_limit_option.get_item_id(frame_limit_option.selected))
+	PlayerSettingsAccess.set_value(&"psx_filter_enabled", psx_filter_check.button_pressed)
+	PlayerSettingsAccess.set_value(&"lens_preset", lens_preset_option.get_item_id(lens_preset_option.selected))
+	PlayerSettingsAccess.set_value(&"crosshair_enabled", crosshair_check.button_pressed)
+	PlayerSettingsAccess.set_value(&"weapon_hold_mode", weapon_hold_option.get_item_id(weapon_hold_option.selected))
+	PlayerSettingsAccess.save_settings()
+	PlayerSettingsAccess.apply_display_settings()
 
 
 func _on_mouse_sensitivity_changed(value: float) -> void:
 	_update_mouse_sensitivity_label(value)
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null:
-		PlayerSettings.mouse_sensitivity = clampf(value, 0.02, 0.50)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"mouse_sensitivity", clampf(value, 0.02, 0.50))
 	if _player != null:
 		_player.mouse_sensitivity = clampf(value, 0.02, 0.50)
 
@@ -462,8 +457,8 @@ func _on_fov_changed(value: float) -> void:
 	_update_fov_label(value)
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null:
-		PlayerSettings.fov = clampf(value, 75.0, 110.0)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"fov", clampf(value, 75.0, 110.0))
 	if _player != null:
 		_player.fov = clampf(value, 75.0, 110.0)
 		_player.aim_fov = minf(_player.aim_fov, _player.fov - 15.0)
@@ -473,9 +468,9 @@ func _on_weapon_hold_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
 	var hold_mode: int = weapon_hold_option.get_item_id(index)
-	if PlayerSettings != null:
-		PlayerSettings.weapon_hold_mode = hold_mode
-		PlayerSettings.save_settings()
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"weapon_hold_mode", hold_mode)
+		PlayerSettingsAccess.save_settings()
 	if _player != null:
 		_player.weapon_hold_mode = clampi(hold_mode, 0, PlayerController.WeaponHoldMode.size() - 1) as PlayerController.WeaponHoldMode
 
@@ -505,9 +500,9 @@ func _is_fullscreen_mode() -> bool:
 func _on_fullscreen_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null:
-		PlayerSettings.fullscreen = enabled
-		PlayerSettings.apply_display_settings()
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"fullscreen", enabled)
+		PlayerSettingsAccess.apply_display_settings()
 	else:
 		var mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if enabled else DisplayServer.WINDOW_MODE_WINDOWED
 		DisplayServer.window_set_mode(mode)
@@ -516,9 +511,9 @@ func _on_fullscreen_toggled(enabled: bool) -> void:
 func _on_vsync_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null:
-		PlayerSettings.vsync = enabled
-		PlayerSettings.apply_display_settings()
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"vsync", enabled)
+		PlayerSettingsAccess.apply_display_settings()
 	else:
 		var mode: int = DisplayServer.VSYNC_ENABLED if enabled else DisplayServer.VSYNC_DISABLED
 		DisplayServer.window_set_vsync_mode(mode)
@@ -528,9 +523,9 @@ func _on_frame_limit_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
 	var limit: int = frame_limit_option.get_item_id(index)
-	if PlayerSettings != null:
-		PlayerSettings.fps_cap = limit
-		PlayerSettings.apply_display_settings()
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"fps_cap", limit)
+		PlayerSettingsAccess.apply_display_settings()
 	else:
 		Engine.max_fps = limit
 
@@ -539,13 +534,13 @@ func _on_performance_profile_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
 	var profile: int = performance_profile_option.get_item_id(index)
-	if PlayerSettings != null:
-		PlayerSettings.set_performance_profile(profile)
-		PlayerSettings.save_settings()
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_performance_profile(profile)
+		PlayerSettingsAccess.save_settings()
 		if _visual_director != null:
-			PlayerSettings.apply_to_visual_director(_visual_director)
+			PlayerSettingsAccess.apply_to_visual_director(_visual_director)
 		if _player != null:
-			PlayerSettings.apply_to_player(_player)
+			PlayerSettingsAccess.apply_to_player(_player)
 	_apply_menu_profile_layout()
 	_update_psx_option_visibility()
 
@@ -557,10 +552,10 @@ func _on_performance_profile_changed(_profile: int) -> void:
 func _on_psx_filter_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null and PlayerSettings.is_low_power_profile():
+	if PlayerSettingsAccess.is_low_power_profile():
 		return
-	if PlayerSettings != null:
-		PlayerSettings.psx_filter_enabled = enabled
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"psx_filter_enabled", enabled)
 	if _visual_director != null:
 		_visual_director.post_process_enabled = enabled
 		_visual_director.refresh_visual_style()
@@ -570,8 +565,8 @@ func _on_time_preset_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
 	var preset: int = time_preset_option.get_item_id(index)
-	if PlayerSettings != null:
-		PlayerSettings.time_of_day_preset = preset
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"time_of_day_preset", preset)
 	if _visual_director != null:
 		_visual_director.time_of_day_preset = preset
 		_visual_director.refresh_visual_style()
@@ -580,11 +575,11 @@ func _on_time_preset_selected(index: int) -> void:
 func _on_lens_preset_selected(index: int) -> void:
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null and PlayerSettings.is_low_power_profile():
+	if PlayerSettingsAccess.is_low_power_profile():
 		return
 	var preset: int = lens_preset_option.get_item_id(index)
-	if PlayerSettings != null:
-		PlayerSettings.lens_preset = preset
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"lens_preset", preset)
 	if _visual_director != null:
 		_visual_director.apply_lens_preset(preset as PSXVisualDirector.LensPreset)
 
@@ -592,8 +587,8 @@ func _on_lens_preset_selected(index: int) -> void:
 func _on_crosshair_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
 		return
-	if PlayerSettings != null:
-		PlayerSettings.crosshair_enabled = enabled
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.set_value(&"crosshair_enabled", enabled)
 	if _hud != null:
 		_hud.set_crosshair_enabled(enabled)
 
@@ -633,7 +628,7 @@ func _on_respawn_player_pressed() -> void:
 
 
 func _update_psx_option_visibility() -> void:
-	var show_filter_options: bool = PlayerSettings == null or not PlayerSettings.is_low_power_profile()
+	var show_filter_options: bool = not PlayerSettingsAccess.has_settings() or not PlayerSettingsAccess.is_low_power_profile()
 	if style_header != null:
 		style_header.visible = show_filter_options
 	if psx_filter_check != null:
@@ -645,7 +640,7 @@ func _update_psx_option_visibility() -> void:
 
 
 func _apply_menu_profile_layout() -> void:
-	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
 	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
 	if scroll != null:
 		scroll.custom_minimum_size = (

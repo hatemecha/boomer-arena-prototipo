@@ -1,6 +1,8 @@
 class_name PlayerController
 extends CharacterBody3D
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 enum DebugCameraMode {
 	FIRST_PERSON,
 	THIRD_PERSON_BACK,
@@ -236,10 +238,9 @@ func _ready() -> void:
 	_previous_camera_yaw = rotation.y
 	_prev_hud_sample_yaw = rotation.y
 	_prev_hud_sample_pitch = _pitch_degrees
-	if PlayerSettings != null:
-		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
-			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
-		apply_performance_profile(int(PlayerSettings.performance_profile))
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
+		apply_performance_profile(PlayerSettingsAccess.get_performance_profile())
 	_setup_debug_cameras()
 
 

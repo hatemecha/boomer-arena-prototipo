@@ -4,8 +4,10 @@
 .omx/
 
 # Paquetes fuente locales (copias versionadas viven en assets/)
-/FOXTEX COMPLETE/
-3D Retro Plumbing & Wiring/
+/FOXTEX COMPLETE/*
+!/FOXTEX COMPLETE/.gdignore
+/3D Retro Plumbing & Wiring/*
+!/3D Retro Plumbing & Wiring/.gdignore
 
 # Assets descartados / experimentos viejos
 assets/_deprecated/

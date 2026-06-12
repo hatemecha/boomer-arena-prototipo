@@ -1,6 +1,8 @@
 class_name MatchResultOverlay
 extends Control
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 signal rematch_requested
 signal menu_requested
 
@@ -40,9 +42,9 @@ func _ready() -> void:
 	_apply_menu_profile_layout()
 	rematch_button.pressed.connect(_on_rematch_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
-	if PlayerSettings != null:
-		PlayerSettings.settings_changed.connect(_on_settings_changed)
-		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	if PlayerSettingsAccess.has_settings():
+		PlayerSettingsAccess.connect_settings_changed(_on_settings_changed)
+		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 
 
 func _apply_fonts() -> void:
@@ -67,7 +69,7 @@ func _on_performance_profile_changed(_profile: int) -> void:
 
 
 func _apply_menu_profile_layout() -> void:
-	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
 	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
 	var title_minimum_size: Vector2 = (
 		ULTRA_LOW_TITLE_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_TITLE_MINIMUM_SIZE
