@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/pickups/health_pickup.gd" id="1_health_pickup"]
 [ext_resource type="PackedScene" path="res://assets/models/pickups/low_poly_medkit.glb" id="2_medkit"]
@@ -6,22 +6,12 @@
 [sub_resource type="SphereShape3D" id="SphereShape3D_pickup"]
 radius = 0.75
 
-[sub_resource type="CylinderMesh" id="CylinderMesh_pickup_marker"]
-top_radius = 0.72
-bottom_radius = 0.72
-height = 0.035
-radial_segments = 12
-rings = 1
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_health_marker"]
-albedo_color = Color(0.7, 0.02, 0.02, 1)
-texture_filter = 0
-roughness = 1.0
-
 [node name="HealthPickup" type="Area3D"]
 script = ExtResource("1_health_pickup")
 respawn_time = 20.0
 heal_amount = 25
+outline_width = 0.022
+glow_light_range = 2.6
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 unique_name_in_owner = true
@@ -29,11 +19,6 @@ shape = SubResource("SphereShape3D_pickup")
 
 [node name="VisualRoot" type="Node3D" parent="."]
 unique_name_in_owner = true
-
-[node name="PickupMarker" type="MeshInstance3D" parent="VisualRoot"]
-position = Vector3(0, -0.46, 0)
-mesh = SubResource("CylinderMesh_pickup_marker")
-surface_material_override/0 = SubResource("StandardMaterial3D_health_marker")
 
 [node name="MedkitModel" parent="VisualRoot" instance=ExtResource("2_medkit")]
 scale = Vector3(1.4, 1.4, 1.4)

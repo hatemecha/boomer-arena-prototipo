@@ -6,11 +6,11 @@ const CEILING_MATERIAL: Material = preload("res://assets/materials/foxtex_ceilin
 const DARK_PANEL_MATERIAL: Material = preload("res://assets/materials/foxtex_dark_panel.tres")
 const RUST_MATERIAL: Material = preload("res://assets/materials/foxtex_rust_red_panel.tres")
 const TRIM_MATERIAL: Material = preload("res://assets/materials/foxtex_metal_trim.tres")
-const PIPES_SCENE: PackedScene = preload("res://assets/models/props/industrial/Pipes.blend")
-const WIRES_SCENE: PackedScene = preload("res://assets/models/props/industrial/Wires.blend")
-const TRANSFORMER_SCENE: PackedScene = preload("res://assets/models/props/industrial/Transformer.blend")
-const CIRCUIT_BREAKER_SCENE: PackedScene = preload("res://assets/models/props/industrial/Circuit Breaker.blend")
-const PIPE_VALVE_SCENE: PackedScene = preload("res://assets/models/props/industrial/Pipe Valve.blend")
+const PIPES_SCENE: PackedScene = preload("res://assets/models/props/industrial/pipes.glb")
+const WIRES_SCENE: PackedScene = preload("res://assets/models/props/industrial/wires.glb")
+const TRANSFORMER_SCENE: PackedScene = preload("res://assets/models/props/industrial/transformer.glb")
+const CIRCUIT_BREAKER_SCENE: PackedScene = preload("res://assets/models/props/industrial/circuit_breaker.glb")
+const PIPE_VALVE_SCENE: PackedScene = preload("res://assets/models/props/industrial/pipe_valve.glb")
 
 var _openings_configured: bool = false
 var _props_configured: bool = false
