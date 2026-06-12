@@ -30,6 +30,13 @@ var _performance_profile: int = 0
 func _ready() -> void:
 	if PlayerSettingsAccess.has_settings():
 		_performance_profile = PlayerSettingsAccess.get_performance_profile()
+	call_deferred("warmup")
+
+
+func warmup() -> void:
+	if _layers_built:
+		return
+	_rebuild_layers()
 
 
 func trigger_shot() -> void:

@@ -353,6 +353,16 @@ func apply_performance_profile(profile: int) -> void:
 			muzzle_flash.apply_performance_profile(safe_profile)
 
 
+func warmup_gameplay_resources(scene_root: Node, bullet_pool_size: int = 8, decal_pool_size: int = 8) -> void:
+	if scene_root == null:
+		return
+	for weapon_node in _weapons:
+		if weapon_node == null:
+			continue
+		if weapon_node.has_method("warmup_runtime_effects"):
+			weapon_node.call("warmup_runtime_effects", scene_root, bullet_pool_size, decal_pool_size)
+
+
 func get_active_weapon_index() -> int:
 	return _active_weapon_index
 

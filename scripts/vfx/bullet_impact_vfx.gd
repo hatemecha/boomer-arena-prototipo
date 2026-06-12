@@ -62,6 +62,26 @@ static func spawn_decal(
 	fade_tween.finished.connect(_on_decal_fade_finished.bind(decal), CONNECT_ONE_SHOT)
 
 
+static func warmup(scene_root: Node, pool_size: int = 8) -> void:
+	if scene_root == null or pool_size <= 0:
+		return
+
+	_get_decal_texture()
+	_get_decal_mesh()
+	_get_decal_material()
+	_cleanup_invalid_decals()
+
+	while _get_pooled_decal_count(scene_root) < pool_size:
+		var decal := _create_decal(scene_root)
+		decal.visible = false
+		_decal_pool.append(decal)
+
+	while _decal_material_pool.size() < pool_size:
+		var material := _get_decal_material().duplicate() as StandardMaterial3D
+		_reset_decal_material(material)
+		_decal_material_pool.append(material)
+
+
 static func _on_decal_fade_finished(decal: MeshInstance3D) -> void:
 	if decal == null or not is_instance_valid(decal):
 		return
@@ -80,6 +100,10 @@ static func _acquire_decal(scene_root: Node) -> MeshInstance3D:
 		if pooled != null and is_instance_valid(pooled):
 			pooled.queue_free()
 
+	return _create_decal(scene_root)
+
+
+static func _create_decal(scene_root: Node) -> MeshInstance3D:
 	var decal := MeshInstance3D.new()
 	decal.name = "BulletImpactDecal"
 	decal.mesh = _get_decal_mesh()
@@ -88,6 +112,14 @@ static func _acquire_decal(scene_root: Node) -> MeshInstance3D:
 	decal.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	scene_root.add_child(decal)
 	return decal
+
+
+static func _get_pooled_decal_count(scene_root: Node) -> int:
+	var count: int = 0
+	for decal in _decal_pool:
+		if decal != null and is_instance_valid(decal) and decal.get_parent() == scene_root:
+			count += 1
+	return count
 
 
 static func _release_decal(decal: MeshInstance3D) -> void:

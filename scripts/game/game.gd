@@ -31,6 +31,8 @@ const MAP_LABELS: Dictionary = {
 @export_range(2, 8) var max_lan_players: int = 2
 @export_range(5.0, 60.0) var network_sync_rate: float = 20.0
 @export_range(0.25, 5.0) var ping_interval: float = 1.0
+@export_range(0, 12) var gameplay_render_warmup_frames: int = 4
+@export_range(0, 32) var gameplay_effect_pool_warmup_size: int = 8
 
 var players: Array[PlayerController] = []
 
@@ -77,6 +79,7 @@ var _has_spawned_pickups: bool = false
 var _has_spawned_targets: bool = false
 var _has_spawned_music_stereo: bool = false
 var _selected_time_of_day_preset: int = PSXVisualDirector.TimeOfDayPreset.NIGHT
+var _local_gameplay_warmup_token: int = 0
 
 
 #region Ciclo de vida e input global
@@ -311,6 +314,7 @@ func _show_lobby(status: String) -> void:
 	if _lobby_menu == null:
 		return
 
+	_local_gameplay_warmup_token += 1
 	_lobby_menu.configure(default_lan_join_address, lan_port, _get_lan_addresses())
 	if _lobby_menu.has_method("set_map_options"):
 		_lobby_menu.call("set_map_options", _get_map_options(), _selected_map_id)
@@ -338,6 +342,95 @@ func _hide_lobby() -> void:
 
 func _is_lobby_visible() -> bool:
 	return _lobby_menu != null and bool(_lobby_menu.visible)
+
+
+func _begin_local_gameplay_warmup(player: PlayerController) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+
+	_local_gameplay_warmup_token += 1
+	var token: int = _local_gameplay_warmup_token
+	player.set_gameplay_input_enabled(false)
+	if _lobby_menu != null and _lobby_menu.visible:
+		_lobby_menu.set_busy(true)
+		_lobby_menu.set_status("Preparando arena...")
+
+	_run_local_gameplay_warmup(player, token)
+
+
+func _run_local_gameplay_warmup(player: PlayerController, token: int) -> void:
+	_warmup_local_gameplay_resources(player)
+
+	var warmup_camera: Camera3D = _create_gameplay_warmup_camera(player)
+	var frames_to_warm: int = gameplay_render_warmup_frames
+	if warmup_camera == null:
+		frames_to_warm = mini(frames_to_warm, 1)
+
+	for frame_index in range(frames_to_warm):
+		if token != _local_gameplay_warmup_token or player == null or not is_instance_valid(player):
+			_free_gameplay_warmup_camera(warmup_camera)
+			return
+		_position_gameplay_warmup_camera(warmup_camera, player, frame_index)
+		await _await_render_warmup_frame()
+
+	_free_gameplay_warmup_camera(warmup_camera)
+	if token != _local_gameplay_warmup_token or player == null or not is_instance_valid(player):
+		return
+
+	_hide_lobby()
+	player.set_gameplay_input_enabled(true)
+
+
+func _warmup_local_gameplay_resources(player: PlayerController) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	if player.has_method("warmup_gameplay_resources"):
+		player.call(
+			"warmup_gameplay_resources",
+			self,
+			gameplay_effect_pool_warmup_size,
+			gameplay_effect_pool_warmup_size
+		)
+
+
+func _create_gameplay_warmup_camera(player: PlayerController) -> Camera3D:
+	if player == null or not is_instance_valid(player) or player.camera == null:
+		return null
+
+	var source_camera: Camera3D = player.camera
+	var warmup_camera := Camera3D.new()
+	warmup_camera.name = "GameplayWarmupCamera"
+	warmup_camera.fov = source_camera.fov
+	warmup_camera.near = source_camera.near
+	warmup_camera.far = source_camera.far
+	warmup_camera.cull_mask = source_camera.cull_mask
+	add_child(warmup_camera)
+	warmup_camera.global_transform = source_camera.global_transform
+	warmup_camera.current = true
+	return warmup_camera
+
+
+func _position_gameplay_warmup_camera(warmup_camera: Camera3D, player: PlayerController, frame_index: int) -> void:
+	if warmup_camera == null or player == null or not is_instance_valid(player) or player.camera == null:
+		return
+
+	var yaw_offsets: Array[float] = [0.0, PI * 0.5, PI, PI * -0.5]
+	var source_transform: Transform3D = player.camera.global_transform
+	var yaw_offset: float = yaw_offsets[frame_index % yaw_offsets.size()]
+	warmup_camera.global_transform = Transform3D(
+		Basis(Vector3.UP, yaw_offset) * source_transform.basis,
+		source_transform.origin
+	)
+
+
+func _await_render_warmup_frame() -> void:
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+
+
+func _free_gameplay_warmup_camera(warmup_camera: Camera3D) -> void:
+	if warmup_camera != null and is_instance_valid(warmup_camera):
+		warmup_camera.queue_free()
 
 
 func _setup_menu_camera() -> void:
@@ -513,6 +606,7 @@ func _spawn_world_content() -> void:
 
 ## Limpia jugadores, HUD y mapeos peer<->player. Punto unico de reseteo de sesion.
 func _reset_session() -> void:
+	_local_gameplay_warmup_token += 1
 	_match_result_request_token += 1
 	_pending_death_cinematic_match_end = false
 	_pending_match_result_winner_id = -1
@@ -536,7 +630,6 @@ func _start_offline_match() -> void:
 	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
 	_spawn_or_update_player(1, 1, spawn_transform.origin, spawn_transform.basis.get_euler().y)
 	_on_network_status_changed("OFFLINE")
-	_hide_lobby()
 
 
 func _start_network_match_as_server() -> void:
@@ -912,7 +1005,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 			_death_cinematic.call("bind_local_player", player)
 		_setup_local_hud(player)
 		_setup_options_menu()
-		_hide_lobby()
+		_begin_local_gameplay_warmup(player)
 		if _is_networked() and not multiplayer.is_server():
 			_network_report_display_name.rpc_id(1, player_id, player.display_name)
 

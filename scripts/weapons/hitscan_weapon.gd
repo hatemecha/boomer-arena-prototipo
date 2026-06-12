@@ -89,6 +89,15 @@ func apply_performance_profile(profile: int) -> void:
 		muzzle_flash.apply_performance_profile(safe_profile)
 
 
+func warmup_runtime_effects(scene_root: Node, bullet_pool_size: int = 8, decal_pool_size: int = 8) -> void:
+	if scene_root == null:
+		return
+	if muzzle_flash != null and muzzle_flash.has_method("warmup"):
+		muzzle_flash.call("warmup")
+	_warmup_bullet_markers(scene_root, bullet_pool_size)
+	BulletImpactVFX.warmup(scene_root, decal_pool_size)
+
+
 func _perform_hitscan(camera: Camera3D) -> void:
 	var effective_spread_degrees: float = spread_degrees
 	if is_aiming:
@@ -302,14 +311,39 @@ func _acquire_bullet_marker(scene_root: Node) -> Node3D:
 		if pooled != null and is_instance_valid(pooled):
 			pooled.queue_free()
 
+	return _create_bullet_marker(scene_root)
+
+
+func _create_bullet_marker(scene_root: Node) -> Node3D:
 	var bullet: Node3D = BULLET_SCENE.instantiate() as Node3D
 	if bullet == null:
 		push_error("HitscanWeapon failed to instantiate assets/models/vfx/low_poly_bullet.glb")
 		return null
 
 	bullet.name = "BulletTracer"
+	bullet.visible = false
 	scene_root.add_child(bullet)
 	return bullet
+
+
+func _warmup_bullet_markers(scene_root: Node, pool_size: int) -> void:
+	if pool_size <= 0:
+		return
+
+	_cleanup_invalid_bullets()
+	while _get_pooled_bullet_count(scene_root) < pool_size:
+		var bullet := _create_bullet_marker(scene_root)
+		if bullet == null:
+			return
+		_bullet_marker_pool.append(bullet)
+
+
+func _get_pooled_bullet_count(scene_root: Node) -> int:
+	var count: int = 0
+	for bullet in _bullet_marker_pool:
+		if bullet != null and is_instance_valid(bullet) and bullet.get_parent() == scene_root:
+			count += 1
+	return count
 
 
 func _release_bullet_marker(bullet: Node3D) -> void:
