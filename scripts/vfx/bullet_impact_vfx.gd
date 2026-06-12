@@ -7,6 +7,7 @@ static var _decal_texture: ImageTexture
 static var _decal_material: StandardMaterial3D
 static var _active_decals: Array[MeshInstance3D] = []
 static var _decal_pool: Array[MeshInstance3D] = []
+static var _decal_material_pool: Array[StandardMaterial3D] = []
 static var _decal_mesh: QuadMesh
 
 
@@ -43,12 +44,13 @@ static func spawn_decal(
 	decal.scale = Vector3.ONE * size_jitter
 	decal.global_position = world_position + normal * 0.014
 
-	var material := _get_decal_material().duplicate() as StandardMaterial3D
+	var material := _acquire_decal_material()
 	var base_alpha: float = material.albedo_color.a
 	decal.material_override = material
 	_active_decals.append(decal)
 
 	var fade_tween: Tween = decal.create_tween()
+	decal.set_meta(&"fade_tween", fade_tween)
 	fade_tween.tween_interval(maxf(lifetime - 0.35, 0.05))
 	fade_tween.tween_method(
 		func(alpha: float) -> void:
@@ -57,8 +59,14 @@ static func spawn_decal(
 		0.0,
 		0.35
 	).set_trans(Tween.TRANS_LINEAR)
-	await fade_tween.finished
+	fade_tween.finished.connect(_on_decal_fade_finished.bind(decal), CONNECT_ONE_SHOT)
 
+
+static func _on_decal_fade_finished(decal: MeshInstance3D) -> void:
+	if decal == null or not is_instance_valid(decal):
+		return
+	if decal.has_meta(&"fade_tween"):
+		decal.remove_meta(&"fade_tween")
 	if _active_decals.has(decal):
 		_active_decals.erase(decal)
 	_release_decal(decal)
@@ -85,7 +93,13 @@ static func _acquire_decal(scene_root: Node) -> MeshInstance3D:
 static func _release_decal(decal: MeshInstance3D) -> void:
 	if decal == null or not is_instance_valid(decal):
 		return
+	if decal.has_meta(&"fade_tween"):
+		var fade_tween: Variant = decal.get_meta(&"fade_tween")
+		if fade_tween is Tween and (fade_tween as Tween).is_valid():
+			(fade_tween as Tween).kill()
+		decal.remove_meta(&"fade_tween")
 	decal.visible = false
+	_release_decal_material(decal.material_override as StandardMaterial3D)
 	decal.material_override = _get_decal_material()
 	_decal_pool.append(decal)
 
@@ -118,6 +132,35 @@ static func _get_decal_material() -> StandardMaterial3D:
 	_decal_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_decal_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	return _decal_material
+
+
+static func _acquire_decal_material() -> StandardMaterial3D:
+	while not _decal_material_pool.is_empty():
+		var pooled: StandardMaterial3D = _decal_material_pool.pop_back()
+		if pooled != null:
+			_reset_decal_material(pooled)
+			return pooled
+
+	var material := _get_decal_material().duplicate() as StandardMaterial3D
+	_reset_decal_material(material)
+	return material
+
+
+static func _release_decal_material(material: StandardMaterial3D) -> void:
+	if material == null or material == _get_decal_material():
+		return
+	_reset_decal_material(material)
+	_decal_material_pool.append(material)
+
+
+static func _reset_decal_material(material: StandardMaterial3D) -> void:
+	var base_material := _get_decal_material()
+	material.albedo_color = base_material.albedo_color
+	material.albedo_texture = base_material.albedo_texture
+	material.texture_filter = base_material.texture_filter
+	material.transparency = base_material.transparency
+	material.cull_mode = base_material.cull_mode
+	material.shading_mode = base_material.shading_mode
 
 
 static func _get_decal_texture() -> ImageTexture:

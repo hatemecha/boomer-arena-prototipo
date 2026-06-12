@@ -35,11 +35,14 @@ var _near_local_players: Array[PlayerController] = []
 var _track_streams: Array[AudioStream] = []
 var _track_covers: Array[Texture2D] = []
 var _is_hovered: bool = false
+var _spectrum_instance: AudioEffectSpectrumAnalyzerInstance
 
 
 func _ready() -> void:
+	set_process(false)
 	DefaultInputActions.ensure_default_actions()
 	_ensure_warehouse_audio_bus()
+	_spectrum_instance = _find_spectrum_instance()
 	player_3d.bus = WAREHOUSE_BUS_NAME
 	player_3d.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
 	player_3d.panning_strength = 0.45
@@ -122,6 +125,13 @@ func get_beat_offset() -> float:
 
 
 func get_spectrum_instance() -> AudioEffectSpectrumAnalyzerInstance:
+	if _spectrum_instance != null:
+		return _spectrum_instance
+	_spectrum_instance = _find_spectrum_instance()
+	return _spectrum_instance
+
+
+func _find_spectrum_instance() -> AudioEffectSpectrumAnalyzerInstance:
 	var bus_index: int = AudioServer.get_bus_index(WAREHOUSE_BUS_NAME)
 	if bus_index == -1:
 		return null
@@ -291,6 +301,7 @@ func _on_interaction_area_body_entered(entered_body: Node3D) -> void:
 
 	if not _near_local_players.has(player):
 		_near_local_players.append(player)
+		set_process(true)
 		proximity_changed.emit(true)
 
 
@@ -303,11 +314,13 @@ func _on_interaction_area_body_exited(exited_body: Node3D) -> void:
 	proximity_changed.emit(not _near_local_players.is_empty())
 	if _near_local_players.is_empty():
 		_set_hovered(false)
+		set_process(false)
 
 
 func _update_hover_state() -> void:
 	if _near_local_players.is_empty() or get_world_3d() == null:
 		_set_hovered(false)
+		set_process(false)
 		return
 
 	for player in _near_local_players:

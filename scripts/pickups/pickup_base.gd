@@ -28,6 +28,9 @@ var _outline_material: ShaderMaterial
 var _glow_light: OmniLight3D
 var _visual_rest_y: float = 0.0
 var _pulse_time: float = 0.0
+var _presentation_update_hz: float = 60.0
+var _presentation_accumulator: float = 0.0
+var _dynamic_glow_enabled: bool = true
 
 
 func _ready() -> void:
@@ -45,17 +48,30 @@ func _ready() -> void:
 
 	if PlayerSettings != null and not PlayerSettings.settings_changed.is_connected(_update_accent_color):
 		PlayerSettings.settings_changed.connect(_update_accent_color)
+	if PlayerSettings != null:
+		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
+			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+		apply_performance_profile(int(PlayerSettings.performance_profile))
 
 
 func _process(delta: float) -> void:
 	if not _is_available:
 		return
 
-	_pulse_time += delta * pulse_speed
+	var step_delta: float = delta
+	if _presentation_update_hz > 0.0 and _presentation_update_hz < 59.0:
+		_presentation_accumulator += delta
+		var interval: float = 1.0 / _presentation_update_hz
+		if _presentation_accumulator < interval:
+			return
+		step_delta = _presentation_accumulator
+		_presentation_accumulator = 0.0
+
+	_pulse_time += step_delta * pulse_speed
 	var pulse := 0.5 + 0.5 * sin(_pulse_time)
 
 	if visual_root != null:
-		visual_root.rotate_y(rotation_speed * delta)
+		visual_root.rotate_y(rotation_speed * step_delta)
 		visual_root.position.y = _visual_rest_y + bob_height * pulse
 
 	_update_pickup_presentation(pulse)
@@ -72,6 +88,21 @@ func set_pickup_id(next_pickup_id: int) -> void:
 
 func is_available() -> bool:
 	return _is_available
+
+
+func apply_performance_profile(profile: int) -> void:
+	var safe_profile := clampi(profile, 0, 2)
+	match safe_profile:
+		PlayerSettings.PerformanceProfile.LOW:
+			_presentation_update_hz = 20.0
+			_dynamic_glow_enabled = true
+		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+			_presentation_update_hz = 10.0
+			_dynamic_glow_enabled = false
+		_:
+			_presentation_update_hz = 60.0
+			_dynamic_glow_enabled = true
+	_update_pickup_glow_visibility()
 
 
 func collect_for_player(player: PlayerController) -> bool:
@@ -110,11 +141,11 @@ func _disable_temporarily() -> void:
 func _set_available(is_next_available: bool, should_emit_signal: bool) -> void:
 	_is_available = is_next_available
 	visible = is_next_available
+	set_process(is_next_available)
 	set_deferred("monitoring", is_next_available)
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", not is_next_available)
-	if _glow_light != null:
-		_glow_light.visible = is_next_available
+	_update_pickup_glow_visibility()
 	if should_emit_signal:
 		availability_changed.emit(pickup_id, _is_available)
 
@@ -183,7 +214,7 @@ func _update_pickup_presentation(pulse: float) -> void:
 			"outline_brightness",
 			lerpf(outline_brightness_min, outline_brightness_max, pulse)
 		)
-	if _glow_light != null:
+	if _glow_light != null and _dynamic_glow_enabled:
 		_glow_light.light_energy = lerpf(glow_light_energy_min, glow_light_energy_max, pulse)
 
 
@@ -194,3 +225,13 @@ func _update_accent_color() -> void:
 		_outline_material.set_shader_parameter("outline_width", outline_width)
 	if _glow_light != null:
 		_glow_light.light_color = accent
+
+
+func _update_pickup_glow_visibility() -> void:
+	if _glow_light == null:
+		return
+	_glow_light.visible = _is_available and _dynamic_glow_enabled
+
+
+func _on_performance_profile_changed(profile: int) -> void:
+	apply_performance_profile(profile)

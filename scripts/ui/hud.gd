@@ -46,13 +46,34 @@ const STATS_DEFAULT_OFFSET: Vector2 = Vector2(58.0, 44.0)
 const STATS_DEFAULT_SIZE: Vector2 = Vector2(276.0, 100.0)
 const STATS_EXTREME_DEBUG_OFFSET: Vector2 = Vector2(88.0, 58.0)
 const STATS_EXTREME_DEBUG_SIZE: Vector2 = Vector2(220.0, 100.0)
+const STATS_ULTRA_LOW_OFFSET: Vector2 = Vector2(12.0, 22.0)
+const STATS_ULTRA_LOW_SIZE: Vector2 = Vector2(210.0, 84.0)
 const MUSIC_PANEL_DEFAULT_TOP: float = 36.0
 const MUSIC_PANEL_DEFAULT_RIGHT_INSET: float = 54.0
 const MUSIC_PANEL_DEFAULT_WIDTH: float = 226.0
 const MUSIC_PANEL_DEFAULT_HEIGHT: float = 40.0
 const MUSIC_PANEL_EXTREME_DEBUG_TOP: float = 50.0
 const MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET: float = 76.0
+const MUSIC_PANEL_ULTRA_LOW_TOP: float = 24.0
+const MUSIC_PANEL_ULTRA_LOW_RIGHT_INSET: float = 8.0
+const SCOREBOARD_DEFAULT_OFFSETS: Vector4 = Vector4(-238.0, -112.0, -54.0, -42.0)
+const SCOREBOARD_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-122.0, -76.0, -8.0, -20.0)
+const KILL_FEED_DEFAULT_OFFSETS: Vector4 = Vector4(58.0, -132.0, 334.0, -16.0)
+const KILL_FEED_ULTRA_LOW_OFFSETS: Vector4 = Vector4(12.0, -76.0, 210.0, -8.0)
+const MATCH_OBJECTIVE_DEFAULT_OFFSETS: Vector4 = Vector4(-120.0, 18.0, 120.0, 40.0)
+const MATCH_OBJECTIVE_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-90.0, 6.0, 90.0, 24.0)
+const MATCH_OBJECTIVE_SUB_DEFAULT_OFFSETS: Vector4 = Vector4(-120.0, 38.0, 120.0, 52.0)
+const MATCH_OBJECTIVE_SUB_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-90.0, 22.0, 90.0, 34.0)
+const INTERACTION_HINT_DEFAULT_OFFSETS: Vector4 = Vector4(-92.0, 28.0, 92.0, 44.0)
+const INTERACTION_HINT_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-74.0, 20.0, 74.0, 34.0)
+const DEFAULT_PANEL_SCALE: Vector2 = Vector2(0.68, 0.68)
+const ULTRA_LOW_PANEL_SCALE: Vector2 = Vector2(0.48, 0.48)
+const DEFAULT_MUSIC_SCALE: Vector2 = Vector2.ONE
+const ULTRA_LOW_MUSIC_SCALE: Vector2 = Vector2(0.62, 0.62)
+const DEFAULT_CENTER_TEXT_SCALE: Vector2 = Vector2.ONE
+const ULTRA_LOW_CENTER_TEXT_SCALE: Vector2 = Vector2(0.72, 0.72)
 const HEALTH_WARN_RATIO: float = 0.3
+const DEBUG_LABEL_REFRESH_INTERVAL: float = 0.20
 
 var _player: PlayerController
 var _visual_director: PSXVisualDirector
@@ -78,6 +99,10 @@ var _music_base_offsets: Vector4 = Vector4.ZERO
 var _scoreboard_base_offsets: Vector4 = Vector4.ZERO
 var _music_stereo: MusicStereo
 var _kill_feed_entries: Array[Control] = []
+var _debug_refresh_timer: float = 0.0
+var _crosshair_supports_set_aiming: bool = false
+var _last_crosshair_aiming: bool = false
+var _performance_profile: int = 0
 const MAX_KILL_FEED_ENTRIES: int = 5
 const KILL_FEED_LIFETIME: float = 4.0
 
@@ -90,6 +115,7 @@ func _ready() -> void:
 	call_deferred("_center_crosshair")
 	_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
 	set_debug_visible(_debug_visible)
+	_update_fps_label()
 	if music_panel != null:
 		music_panel.visible = false
 	if scoreboard_panel != null:
@@ -99,8 +125,13 @@ func _ready() -> void:
 	if aim_dot != null:
 		aim_dot.visible = false
 	apply_accent_theme()
-	if PlayerSettings != null and not PlayerSettings.settings_changed.is_connected(apply_accent_theme):
-		PlayerSettings.settings_changed.connect(apply_accent_theme)
+	_cache_crosshair_capabilities()
+	if PlayerSettings != null:
+		if not PlayerSettings.settings_changed.is_connected(apply_accent_theme):
+			PlayerSettings.settings_changed.connect(apply_accent_theme)
+		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
+			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+		apply_performance_profile(int(PlayerSettings.performance_profile))
 
 
 func apply_accent_theme() -> void:
@@ -123,6 +154,12 @@ func apply_accent_theme() -> void:
 
 func reset_motion() -> void:
 	_hud_motion_offset = Vector2.ZERO
+	_apply_hud_motion()
+
+
+func apply_performance_profile(profile: int) -> void:
+	_performance_profile = clampi(profile, 0, 2)
+	_apply_lens_safe_layout(_visual_director.lens_preset if _visual_director != null else PSXVisualDirector.LensPreset.PSX_8MM)
 	_apply_hud_motion()
 
 
@@ -229,23 +266,25 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 
 
 func _process(delta: float) -> void:
-	if _debug_visible:
-		if fps_label != null:
-			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
-		if position_label != null:
-			position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
-		if speed_label != null:
-			speed_label.text = "%.1f u/s" % _debug_speed
+	_debug_refresh_timer += delta
+	if _debug_refresh_timer >= DEBUG_LABEL_REFRESH_INTERVAL:
+		_debug_refresh_timer = 0.0
+		_update_fps_label()
+		if _debug_visible:
+			_update_debug_labels()
 	if crosshair != null and _crosshair_enabled:
 		if not crosshair.visible:
 			crosshair.visible = true
-		if crosshair.has_method("set_aiming"):
-			crosshair.call("set_aiming", _active_weapon != null and _active_weapon.is_aiming)
+		var is_aiming_now: bool = _active_weapon != null and _active_weapon.is_aiming
+		if _crosshair_supports_set_aiming and is_aiming_now != _last_crosshair_aiming:
+			_last_crosshair_aiming = is_aiming_now
+			crosshair.call("set_aiming", is_aiming_now)
 	_update_hud_motion(delta)
 
 
 func set_debug_visible(value: bool) -> void:
 	_debug_visible = value
+	_debug_refresh_timer = DEBUG_LABEL_REFRESH_INTERVAL
 	if weapon_row != null:
 		weapon_row.visible = value
 	if score_row != null:
@@ -255,7 +294,7 @@ func set_debug_visible(value: bool) -> void:
 	if network_row != null:
 		network_row.visible = value
 	if fps_row != null:
-		fps_row.visible = value
+		fps_row.visible = true
 	if position_row != null:
 		position_row.visible = value
 	if speed_row != null:
@@ -376,10 +415,30 @@ func rebuild_crosshair(use_sprite: bool, crosshair_index: int) -> void:
 	crosshair.offset_bottom = 16.0
 	crosshair.set_script(crosshair_script)
 	add_child(crosshair)
+	_cache_crosshair_capabilities()
 	call_deferred("_center_crosshair")
 	if use_sprite and crosshair.has_method("set_crosshair_index"):
 		crosshair.call("set_crosshair_index", crosshair_index)
 	set_crosshair_enabled(_crosshair_enabled)
+
+
+func _cache_crosshair_capabilities() -> void:
+	_crosshair_supports_set_aiming = crosshair != null and crosshair.has_method("set_aiming")
+	_last_crosshair_aiming = false
+	if _crosshair_supports_set_aiming:
+		crosshair.call("set_aiming", false)
+
+
+func _update_fps_label() -> void:
+	if fps_label != null:
+		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+
+
+func _update_debug_labels() -> void:
+	if position_label != null:
+		position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
+	if speed_label != null:
+		speed_label.text = "%.1f u/s" % _debug_speed
 
 
 func _center_crosshair() -> void:
@@ -517,6 +576,10 @@ func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
 	_apply_lens_safe_layout(preset)
 
 
+func _on_performance_profile_changed(profile: int) -> void:
+	apply_performance_profile(profile)
+
+
 func _on_music_track_changed(title: String, artist: String, cover: Texture2D, is_playing: bool) -> void:
 	if music_panel != null:
 		music_panel.visible = is_playing
@@ -546,8 +609,17 @@ func _on_music_interaction_hint_changed(text: String, is_visible: bool) -> void:
 
 
 func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
+	var use_ultra_low_layout := _is_ultra_low_hud()
 	if stats != null:
-		if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
+		if use_ultra_low_layout:
+			stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
+			_set_stats_base_offsets(
+				STATS_ULTRA_LOW_OFFSET.x,
+				STATS_ULTRA_LOW_OFFSET.y,
+				STATS_ULTRA_LOW_OFFSET.x + STATS_ULTRA_LOW_SIZE.x,
+				STATS_ULTRA_LOW_OFFSET.y + STATS_ULTRA_LOW_SIZE.y
+			)
+		elif preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
 			stats.set_anchors_preset(Control.PRESET_TOP_LEFT)
 			_set_stats_base_offsets(
 				STATS_EXTREME_DEBUG_OFFSET.x,
@@ -564,10 +636,65 @@ func _apply_lens_safe_layout(preset: PSXVisualDirector.LensPreset) -> void:
 				STATS_DEFAULT_OFFSET.y + STATS_DEFAULT_SIZE.y
 			)
 
-	if preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
+	if use_ultra_low_layout:
+		_apply_music_panel_layout(MUSIC_PANEL_ULTRA_LOW_TOP, MUSIC_PANEL_ULTRA_LOW_RIGHT_INSET)
+	elif preset == PSXVisualDirector.LensPreset.EXTREME_DEBUG:
 		_apply_music_panel_layout(MUSIC_PANEL_EXTREME_DEBUG_TOP, MUSIC_PANEL_EXTREME_DEBUG_RIGHT_INSET)
 	else:
 		_apply_music_panel_layout(MUSIC_PANEL_DEFAULT_TOP, MUSIC_PANEL_DEFAULT_RIGHT_INSET)
+
+	_apply_hud_profile_static_offsets()
+	_apply_hud_profile_scale()
+
+
+func _is_ultra_low_hud() -> bool:
+	return _performance_profile == PlayerSettings.PerformanceProfile.ULTRA_LOW
+
+
+func _apply_hud_profile_static_offsets() -> void:
+	if _is_ultra_low_hud():
+		_set_control_offsets(scoreboard_panel, SCOREBOARD_ULTRA_LOW_OFFSETS)
+		_set_control_offsets(kill_feed_panel, KILL_FEED_ULTRA_LOW_OFFSETS)
+		_set_control_offsets(match_objective, MATCH_OBJECTIVE_ULTRA_LOW_OFFSETS)
+		_set_control_offsets(match_objective_sub, MATCH_OBJECTIVE_SUB_ULTRA_LOW_OFFSETS)
+		_set_control_offsets(interaction_hint, INTERACTION_HINT_ULTRA_LOW_OFFSETS)
+	else:
+		_set_control_offsets(scoreboard_panel, SCOREBOARD_DEFAULT_OFFSETS)
+		_set_control_offsets(kill_feed_panel, KILL_FEED_DEFAULT_OFFSETS)
+		_set_control_offsets(match_objective, MATCH_OBJECTIVE_DEFAULT_OFFSETS)
+		_set_control_offsets(match_objective_sub, MATCH_OBJECTIVE_SUB_DEFAULT_OFFSETS)
+		_set_control_offsets(interaction_hint, INTERACTION_HINT_DEFAULT_OFFSETS)
+	_scoreboard_base_offsets = _read_control_base_offsets(scoreboard_panel, _scoreboard_base_offsets)
+
+
+func _apply_hud_profile_scale() -> void:
+	var panel_scale: Vector2 = ULTRA_LOW_PANEL_SCALE if _is_ultra_low_hud() else DEFAULT_PANEL_SCALE
+	var music_scale: Vector2 = ULTRA_LOW_MUSIC_SCALE if _is_ultra_low_hud() else DEFAULT_MUSIC_SCALE
+	var center_text_scale: Vector2 = ULTRA_LOW_CENTER_TEXT_SCALE if _is_ultra_low_hud() else DEFAULT_CENTER_TEXT_SCALE
+
+	_set_control_scale(stats, panel_scale)
+	_set_control_scale(scoreboard_panel, panel_scale)
+	_set_control_scale(kill_feed_panel, panel_scale)
+	_set_control_scale(music_panel, music_scale)
+	_set_control_scale(match_objective, center_text_scale, true)
+	_set_control_scale(match_objective_sub, center_text_scale, true)
+	_set_control_scale(interaction_hint, center_text_scale, true)
+
+
+func _set_control_offsets(control: Control, offsets: Vector4) -> void:
+	if control == null:
+		return
+	control.offset_left = offsets.x
+	control.offset_top = offsets.y
+	control.offset_right = offsets.z
+	control.offset_bottom = offsets.w
+
+
+func _set_control_scale(control: Control, next_scale: Vector2, use_center_pivot: bool = false) -> void:
+	if control == null:
+		return
+	control.scale = next_scale
+	control.pivot_offset = control.size * 0.5 if use_center_pivot else Vector2.ZERO
 
 
 func _apply_music_panel_layout(top: float, right_inset: float) -> void:

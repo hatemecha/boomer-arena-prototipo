@@ -36,13 +36,14 @@ var state: String = "Idle"
 var is_aiming: bool = false
 var reload_anim_position: Vector3 = Vector3.ZERO
 var reload_anim_rotation: Vector3 = Vector3.ZERO
-var _time_since_last_shot: float = 999.0
+var _next_fire_time_msec: int = 0
 var _is_reloading: bool = false
 var _audio_player: AudioStreamPlayer3D
 var _reload_tween: Tween
 
 
 func _ready() -> void:
+	set_process(false)
 	ammo_in_mag = clampi(ammo_in_mag, 0, mag_size)
 	_audio_player = AudioStreamPlayer3D.new()
 	_audio_player.name = "WeaponAudio"
@@ -51,16 +52,12 @@ func _ready() -> void:
 	_set_state("Idle")
 
 
-func _process(delta: float) -> void:
-	_time_since_last_shot += delta
-
-
 func is_reloading() -> bool:
 	return _is_reloading
 
 
 func can_fire() -> bool:
-	return not _is_reloading and ammo_in_mag > 0 and _time_since_last_shot >= fire_rate
+	return not _is_reloading and ammo_in_mag > 0 and Time.get_ticks_msec() >= _next_fire_time_msec
 
 
 func try_fire(_camera: Camera3D) -> bool:
@@ -74,7 +71,7 @@ func try_fire(_camera: Camera3D) -> bool:
 		return false
 
 	ammo_in_mag -= 1
-	_time_since_last_shot = 0.0
+	_next_fire_time_msec = Time.get_ticks_msec() + int(roundf(fire_rate * 1000.0))
 	_set_state("Firing")
 	ammo_changed.emit(ammo_in_mag, reserve_ammo)
 	_play_sound(fire_sound)

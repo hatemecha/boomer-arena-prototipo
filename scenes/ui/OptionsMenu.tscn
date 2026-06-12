@@ -171,6 +171,22 @@ text = "MIRA"
 layout_mode = 2
 text = "VIDEO"
 
+[node name="PerformanceProfileRow" type="HBoxContainer" parent="Center/Scroll/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PerformanceProfileLabel" type="Label" parent="Center/Scroll/Content/PerformanceProfileRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "PERF"
+horizontal_alignment = 2
+
+[node name="PerformanceProfileOption" type="OptionButton" parent="Center/Scroll/Content/PerformanceProfileRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="FullscreenCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2

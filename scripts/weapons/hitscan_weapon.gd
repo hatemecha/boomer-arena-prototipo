@@ -16,10 +16,27 @@ const BULLET_SCENE: PackedScene = preload("res://assets/models/vfx/low_poly_bull
 
 @onready var muzzle_flash: Node = get_node_or_null("MuzzleFlash")
 
+var bullet_bounce_enabled: bool = true
+
 # Pool compartido entre todas las armas hitscan: las balas se reutilizan
 # (ocultar/mostrar) en lugar de instanciar y liberar una por disparo.
 static var _active_bullet_markers: Array[Node3D] = []
 static var _bullet_marker_pool: Array[Node3D] = []
+
+var _default_impact_lifetime: float = 0.45
+var _default_decal_lifetime: float = 5.0
+var _default_max_active_impacts: int = 48
+var _default_max_active_decals: int = 64
+var _default_bullet_bounce_lifetime: float = 1.6
+var _default_bullet_bounce_distance: float = 0.75
+var _defaults_cached: bool = false
+
+
+func _ready() -> void:
+	super()
+	_cache_default_performance_values()
+	if PlayerSettings != null:
+		apply_performance_profile(int(PlayerSettings.performance_profile))
 
 
 func try_fire(camera: Camera3D) -> bool:
@@ -36,6 +53,39 @@ func try_fire(camera: Camera3D) -> bool:
 	_show_muzzle_flash()
 	fired.emit(self)
 	return true
+
+
+func apply_performance_profile(profile: int) -> void:
+	_cache_default_performance_values()
+	var safe_profile := clampi(profile, 0, 2)
+	match safe_profile:
+		PlayerSettings.PerformanceProfile.LOW:
+			impact_lifetime = minf(_default_impact_lifetime, 0.35)
+			decal_lifetime = minf(_default_decal_lifetime, 3.0)
+			max_active_impacts = mini(_default_max_active_impacts, 24)
+			max_active_decals = mini(_default_max_active_decals, 32)
+			bullet_bounce_lifetime = minf(_default_bullet_bounce_lifetime, 0.9)
+			bullet_bounce_distance = _default_bullet_bounce_distance
+			bullet_bounce_enabled = true
+		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+			impact_lifetime = minf(_default_impact_lifetime, 0.25)
+			decal_lifetime = minf(_default_decal_lifetime, 1.8)
+			max_active_impacts = mini(_default_max_active_impacts, 8)
+			max_active_decals = mini(_default_max_active_decals, 12)
+			bullet_bounce_lifetime = 0.0
+			bullet_bounce_distance = 0.0
+			bullet_bounce_enabled = false
+		_:
+			impact_lifetime = _default_impact_lifetime
+			decal_lifetime = _default_decal_lifetime
+			max_active_impacts = _default_max_active_impacts
+			max_active_decals = _default_max_active_decals
+			bullet_bounce_lifetime = _default_bullet_bounce_lifetime
+			bullet_bounce_distance = _default_bullet_bounce_distance
+			bullet_bounce_enabled = true
+
+	if muzzle_flash != null and muzzle_flash.has_method("apply_performance_profile"):
+		muzzle_flash.apply_performance_profile(safe_profile)
 
 
 func _perform_hitscan(camera: Camera3D) -> void:
@@ -216,6 +266,8 @@ func _spawn_impact_decal(world_position: Vector3, surface_normal: Vector3) -> vo
 
 
 func _should_bullet_bounce(hit: Dictionary, damage_target: Object) -> bool:
+	if not bullet_bounce_enabled:
+		return false
 	if damage_target != null:
 		return false
 
@@ -317,3 +369,15 @@ func _find_damage_target(collider: Object) -> Object:
 			break
 		current = (current as Node).get_parent()
 	return null
+
+
+func _cache_default_performance_values() -> void:
+	if _defaults_cached:
+		return
+	_default_impact_lifetime = impact_lifetime
+	_default_decal_lifetime = decal_lifetime
+	_default_max_active_impacts = max_active_impacts
+	_default_max_active_decals = max_active_decals
+	_default_bullet_bounce_lifetime = bullet_bounce_lifetime
+	_default_bullet_bounce_distance = bullet_bounce_distance
+	_defaults_cached = true

@@ -13,6 +13,12 @@ const CROSSHAIR_STYLE_COUNT: int = 12
 const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
 const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
 const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
+const DEFAULT_SCROLL_MINIMUM_SIZE: Vector2 = Vector2(320.0, 300.0)
+const ULTRA_LOW_SCROLL_MINIMUM_SIZE: Vector2 = Vector2(300.0, 220.0)
+const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
+const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.74, 0.74)
+const DEFAULT_MENU_SEPARATION: int = 8
+const ULTRA_LOW_MENU_SEPARATION: int = 6
 
 @onready var name_edit: LineEdit = %NameEdit
 @onready var accent_picker: ColorPickerButton = %AccentPicker
@@ -24,14 +30,20 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 @onready var weapon_hold_option: OptionButton = %WeaponHoldOption
 @onready var fullscreen_check: CheckBox = %FullscreenCheck
 @onready var vsync_check: CheckBox = %VsyncCheck
+@onready var performance_profile_option: OptionButton = %PerformanceProfileOption
 @onready var frame_limit_option: OptionButton = %FrameLimitOption
 @onready var psx_filter_check: CheckBox = %PsxFilterCheck
+@onready var style_header: Label = $Center/Scroll/Content/StyleHeader
+@onready var time_preset_row: HBoxContainer = $Center/Scroll/Content/TimePresetRow
 @onready var time_preset_option: OptionButton = %TimePresetOption
+@onready var lens_preset_row: HBoxContainer = $Center/Scroll/Content/LensPresetRow
 @onready var lens_preset_option: OptionButton = %LensPresetOption
 @onready var crosshair_check: CheckBox = %CrosshairCheck
 @onready var debug_hud_check: CheckBox = %DebugHudCheck
 @onready var debug_draw_check: CheckBox = %DebugDrawCheck
 @onready var game_title: Label = $Center/Scroll/Content/GameTitle
+@onready var scroll: ScrollContainer = $Center/Scroll
+@onready var content: VBoxContainer = $Center/Scroll/Content
 @onready var back_button: Button = %BackButton
 @onready var resume_button: Button = %ResumeButton
 @onready var leave_match_button: Button = %LeaveMatchButton
@@ -50,20 +62,25 @@ var _menu_motion
 var _in_match: bool = false
 var _accent_before_edit: Color = Color(1.0, 0.12, 0.05)
 var _accent_edit_committed: bool = false
+var _time_preset_row_initial_visible: bool = false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process(false)
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_menu_motion = ArenaMenuMotionScript.new()
 	_menu_motion.bind(self)
+	_time_preset_row_initial_visible = time_preset_row != null and time_preset_row.visible
 	_populate_options()
 	_connect_controls()
 	_configure_dev_buttons()
 	if PlayerSettings != null:
 		PlayerSettings.settings_changed.connect(_on_player_settings_changed)
+		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	_apply_menu_profile_layout()
 
 
 func _process(delta: float) -> void:
@@ -116,6 +133,7 @@ func _update_mode_visibility() -> void:
 func open() -> void:
 	_sync_controls_from_game()
 	visible = true
+	set_process(true)
 	get_tree().paused = _in_match
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if _in_match:
@@ -129,6 +147,7 @@ func open() -> void:
 
 func close() -> void:
 	visible = false
+	set_process(false)
 	get_tree().paused = false
 	if _in_match:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -143,6 +162,11 @@ func toggle() -> void:
 
 
 func _populate_options() -> void:
+	performance_profile_option.clear()
+	performance_profile_option.add_item("Default", PlayerSettings.PerformanceProfile.DEFAULT)
+	performance_profile_option.add_item("Low", PlayerSettings.PerformanceProfile.LOW)
+	performance_profile_option.add_item("Ultra Low", PlayerSettings.PerformanceProfile.ULTRA_LOW)
+
 	frame_limit_option.clear()
 	frame_limit_option.add_item("Sin límite", 0)
 	frame_limit_option.add_item("30 FPS", 30)
@@ -205,6 +229,7 @@ func _connect_controls() -> void:
 	weapon_hold_option.item_selected.connect(_on_weapon_hold_selected)
 	fullscreen_check.toggled.connect(_on_fullscreen_toggled)
 	vsync_check.toggled.connect(_on_vsync_toggled)
+	performance_profile_option.item_selected.connect(_on_performance_profile_selected)
 	frame_limit_option.item_selected.connect(_on_frame_limit_selected)
 	psx_filter_check.toggled.connect(_on_psx_filter_toggled)
 	time_preset_option.item_selected.connect(_on_time_preset_selected)
@@ -231,10 +256,12 @@ func _sync_controls_from_game() -> void:
 		_select_option_by_id(weapon_hold_option, PlayerSettings.weapon_hold_mode)
 		fullscreen_check.button_pressed = PlayerSettings.fullscreen
 		vsync_check.button_pressed = PlayerSettings.vsync
+		_select_option_by_id(performance_profile_option, int(PlayerSettings.performance_profile))
 		_select_frame_limit(PlayerSettings.fps_cap)
 		psx_filter_check.button_pressed = PlayerSettings.psx_filter_enabled
 		_select_option_by_id(time_preset_option, PlayerSettings.time_of_day_preset)
 		_select_option_by_id(lens_preset_option, PlayerSettings.lens_preset)
+		_update_psx_option_visibility()
 	elif _player != null:
 		mouse_sensitivity_slider.value = _player.mouse_sensitivity
 		fov_slider.value = _player.fov
@@ -251,6 +278,7 @@ func _sync_controls_from_game() -> void:
 		psx_filter_check.button_pressed = _visual_director.post_process_enabled
 		_select_option_by_id(time_preset_option, _visual_director.time_of_day_preset)
 		_select_option_by_id(lens_preset_option, _visual_director.lens_preset)
+		_update_psx_option_visibility()
 
 	if _hud != null:
 		crosshair_check.button_pressed = _hud.is_crosshair_enabled()
@@ -386,7 +414,9 @@ func _on_crosshair_style_selected(index: int) -> void:
 
 func _on_player_settings_changed() -> void:
 	ArenaMenuStyleScript.apply_to_menu(self)
+	_apply_menu_profile_layout()
 	_apply_crosshair_style()
+	_update_psx_option_visibility()
 	if _hud != null:
 		_hud.apply_accent_theme()
 
@@ -406,6 +436,9 @@ func _save_player_settings() -> void:
 	PlayerSettings.fov = clampf(fov_slider.value, 75.0, 110.0)
 	PlayerSettings.fullscreen = fullscreen_check.button_pressed
 	PlayerSettings.vsync = vsync_check.button_pressed
+	PlayerSettings.performance_profile = performance_profile_option.get_item_id(
+		performance_profile_option.selected
+	) as PlayerSettings.PerformanceProfile
 	PlayerSettings.fps_cap = frame_limit_option.get_item_id(frame_limit_option.selected)
 	PlayerSettings.psx_filter_enabled = psx_filter_check.button_pressed
 	PlayerSettings.lens_preset = lens_preset_option.get_item_id(lens_preset_option.selected)
@@ -502,8 +535,29 @@ func _on_frame_limit_selected(index: int) -> void:
 		Engine.max_fps = limit
 
 
+func _on_performance_profile_selected(index: int) -> void:
+	if _is_syncing_controls:
+		return
+	var profile: int = performance_profile_option.get_item_id(index)
+	if PlayerSettings != null:
+		PlayerSettings.set_performance_profile(profile)
+		PlayerSettings.save_settings()
+		if _visual_director != null:
+			PlayerSettings.apply_to_visual_director(_visual_director)
+		if _player != null:
+			PlayerSettings.apply_to_player(_player)
+	_apply_menu_profile_layout()
+	_update_psx_option_visibility()
+
+
+func _on_performance_profile_changed(_profile: int) -> void:
+	_apply_menu_profile_layout()
+
+
 func _on_psx_filter_toggled(enabled: bool) -> void:
 	if _is_syncing_controls:
+		return
+	if PlayerSettings != null and PlayerSettings.is_low_power_profile():
 		return
 	if PlayerSettings != null:
 		PlayerSettings.psx_filter_enabled = enabled
@@ -525,6 +579,8 @@ func _on_time_preset_selected(index: int) -> void:
 
 func _on_lens_preset_selected(index: int) -> void:
 	if _is_syncing_controls:
+		return
+	if PlayerSettings != null and PlayerSettings.is_low_power_profile():
 		return
 	var preset: int = lens_preset_option.get_item_id(index)
 	if PlayerSettings != null:
@@ -574,3 +630,31 @@ func _on_damage_player_pressed() -> void:
 
 func _on_respawn_player_pressed() -> void:
 	respawn_requested.emit()
+
+
+func _update_psx_option_visibility() -> void:
+	var show_filter_options: bool = PlayerSettings == null or not PlayerSettings.is_low_power_profile()
+	if style_header != null:
+		style_header.visible = show_filter_options
+	if psx_filter_check != null:
+		psx_filter_check.visible = show_filter_options
+	if time_preset_row != null:
+		time_preset_row.visible = show_filter_options and _time_preset_row_initial_visible
+	if lens_preset_row != null:
+		lens_preset_row.visible = show_filter_options
+
+
+func _apply_menu_profile_layout() -> void:
+	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
+	if scroll != null:
+		scroll.custom_minimum_size = (
+			ULTRA_LOW_SCROLL_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_SCROLL_MINIMUM_SIZE
+		)
+		scroll.scale = menu_scale
+		scroll.pivot_offset = scroll.custom_minimum_size * 0.5 if use_ultra_low_layout else Vector2.ZERO
+	if content != null:
+		content.add_theme_constant_override(
+			"separation",
+			ULTRA_LOW_MENU_SEPARATION if use_ultra_low_layout else DEFAULT_MENU_SEPARATION
+		)

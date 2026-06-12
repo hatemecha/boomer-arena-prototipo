@@ -15,6 +15,7 @@ enum LensPreset {
 }
 
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
+const PSX_FAST_SHADER: Shader = preload("res://shaders/psx_palette_fast.gdshader")
 const EXTERIOR_SUN_LIGHT_NAME: StringName = &"ExteriorSunLight"
 ## Debe quedar por encima del HUD (200) para que el filtro PSX afecte la interfaz.
 const POST_PROCESS_CANVAS_LAYER: int = 220
@@ -60,6 +61,9 @@ var _post_process_material: ShaderMaterial
 var _nearest_filtering_applied: bool = false
 var _menu_lens_boost: bool = false
 var _base_chromatic_aberration_strength: float = 0.0024
+var _base_glow_enabled: bool = true
+var _performance_profile: int = 0
+var _use_fast_post_process: bool = false
 
 # Cache de nodos de escena. La arena es estatica, asi que se recolecta una sola
 # vez (una unica recursion) en lugar de recorrer todo el arbol en cada refresh.
@@ -80,6 +84,7 @@ var _music_palette_mix_override: float = -1.0
 
 
 func _ready() -> void:
+	_base_glow_enabled = glow_enabled
 	_apply_lens_preset_values(lens_preset)
 	call_deferred("refresh_visual_style")
 
@@ -101,6 +106,18 @@ func apply_lens_preset(preset: LensPreset) -> void:
 	_apply_lens_preset_values(lens_preset)
 	refresh_visual_style()
 	lens_preset_changed.emit(lens_preset)
+
+
+func apply_performance_profile(profile: int) -> void:
+	var safe_profile := clampi(profile, 0, 2)
+	if _performance_profile == safe_profile:
+		return
+
+	_performance_profile = safe_profile
+	_use_fast_post_process = _performance_profile != 0
+	glow_enabled = _base_glow_enabled and _performance_profile == 0
+	_sync_post_process_shader()
+	refresh_visual_style()
 
 
 func refresh_visual_style() -> void:
@@ -157,6 +174,7 @@ func clear_music_shader_override() -> void:
 func _ensure_post_process() -> void:
 	if _post_process_layer != null:
 		_post_process_layer.layer = POST_PROCESS_CANVAS_LAYER
+		_sync_post_process_shader()
 		_set_post_process_visible(post_process_enabled)
 		return
 
@@ -172,9 +190,21 @@ func _ensure_post_process() -> void:
 	_post_process_layer.add_child(_post_process_rect)
 
 	_post_process_material = ShaderMaterial.new()
-	_post_process_material.shader = PSX_SHADER
+	_post_process_material.shader = _get_current_post_process_shader()
 	_post_process_rect.material = _post_process_material
 	_set_post_process_visible(post_process_enabled)
+
+
+func _get_current_post_process_shader() -> Shader:
+	return PSX_FAST_SHADER if _use_fast_post_process else PSX_SHADER
+
+
+func _sync_post_process_shader() -> void:
+	if _post_process_material == null:
+		return
+	var next_shader := _get_current_post_process_shader()
+	if _post_process_material.shader != next_shader:
+		_post_process_material.shader = next_shader
 
 
 func _set_post_process_visible(value: bool) -> void:
@@ -323,6 +353,7 @@ func _configure_directional_light(directional_light: DirectionalLight3D) -> void
 func _apply_post_process_preset() -> void:
 	if _post_process_material == null:
 		return
+	_sync_post_process_shader()
 
 	var tint_color: Color
 	var danger_color: Color = Color(0.74, 0.025, 0.02)
@@ -348,6 +379,9 @@ func _apply_post_process_preset() -> void:
 	_post_process_material.set_shader_parameter("color_levels", effective_color_levels)
 	_post_process_material.set_shader_parameter("dither_strength", dither_strength)
 	_post_process_material.set_shader_parameter("palette_mix", effective_palette_mix)
+	_post_process_material.set_shader_parameter("vignette_strength", vignette_strength)
+	_post_process_material.set_shader_parameter("vignette_radius", vignette_radius)
+	_post_process_material.set_shader_parameter("vignette_softness", vignette_softness)
 	_apply_lens_shader_parameters()
 	var final_tint := tint_color.lerp(_music_tint_color, _music_tint_strength)
 	_post_process_material.set_shader_parameter("tint_color", Vector3(final_tint.r, final_tint.g, final_tint.b))
@@ -430,7 +464,7 @@ func set_menu_lens_boost(enabled: bool) -> void:
 
 
 func _apply_lens_shader_parameters() -> void:
-	if _post_process_material == null:
+	if _post_process_material == null or _use_fast_post_process:
 		return
 
 	var effective_chromatic: float = chromatic_aberration_strength

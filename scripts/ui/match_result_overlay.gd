@@ -11,11 +11,23 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 const WIN_COLOR: Color = Color(0.24, 1.0, 0.38, 1.0)
 const LOSE_COLOR: Color = Color(1.0, 0.08, 0.08, 1.0)
 const DRAW_COLOR: Color = Color(0.92, 0.92, 0.86, 1.0)
+const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
+const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.78, 0.78)
+const DEFAULT_TITLE_MINIMUM_SIZE: Vector2 = Vector2(420.0, 58.0)
+const ULTRA_LOW_TITLE_MINIMUM_SIZE: Vector2 = Vector2(330.0, 46.0)
+const DEFAULT_BUTTON_MINIMUM_SIZE: Vector2 = Vector2(180.0, 28.0)
+const ULTRA_LOW_BUTTON_MINIMUM_SIZE: Vector2 = Vector2(150.0, 24.0)
+const DEFAULT_CONTENT_SEPARATION: int = 14
+const ULTRA_LOW_CONTENT_SEPARATION: int = 8
+const DEFAULT_BUTTON_SEPARATION: int = 16
+const ULTRA_LOW_BUTTON_SEPARATION: int = 8
 
 @onready var backdrop: ColorRect = %Backdrop
+@onready var content: VBoxContainer = $Center/Content
 @onready var title_label: Label = %TitleLabel
 @onready var subtitle_label: Label = %SubtitleLabel
 @onready var score_label: Label = %ScoreLabel
+@onready var buttons: HBoxContainer = $Center/Content/Buttons
 @onready var rematch_button: Button = %RematchButton
 @onready var menu_button: Button = %MenuButton
 
@@ -25,11 +37,12 @@ func _ready() -> void:
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
 	ArenaMenuStyleScript.apply_to_menu(self)
-	_apply_fonts()
+	_apply_menu_profile_layout()
 	rematch_button.pressed.connect(_on_rematch_pressed)
 	menu_button.pressed.connect(_on_menu_pressed)
 	if PlayerSettings != null:
 		PlayerSettings.settings_changed.connect(_on_settings_changed)
+		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
 
 
 func _apply_fonts() -> void:
@@ -46,6 +59,40 @@ func _apply_fonts() -> void:
 
 func _on_settings_changed() -> void:
 	ArenaMenuStyleScript.apply_to_menu(self)
+	_apply_menu_profile_layout()
+
+
+func _on_performance_profile_changed(_profile: int) -> void:
+	_apply_menu_profile_layout()
+
+
+func _apply_menu_profile_layout() -> void:
+	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
+	var title_minimum_size: Vector2 = (
+		ULTRA_LOW_TITLE_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_TITLE_MINIMUM_SIZE
+	)
+	var button_minimum_size: Vector2 = (
+		ULTRA_LOW_BUTTON_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_BUTTON_MINIMUM_SIZE
+	)
+	if title_label != null:
+		title_label.custom_minimum_size = title_minimum_size
+	if buttons != null:
+		buttons.add_theme_constant_override(
+			"separation",
+			ULTRA_LOW_BUTTON_SEPARATION if use_ultra_low_layout else DEFAULT_BUTTON_SEPARATION
+		)
+	for button in [rematch_button, menu_button]:
+		if button is Button:
+			(button as Button).custom_minimum_size = button_minimum_size
+	if content != null:
+		content.scale = menu_scale
+		content.add_theme_constant_override(
+			"separation",
+			ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION
+		)
+		content.pivot_offset = content.get_combined_minimum_size() * 0.5 if use_ultra_low_layout else Vector2.ZERO
+	_apply_fonts()
 
 
 func show_result(
@@ -82,6 +129,7 @@ func show_result(
 	rematch_button.visible = true
 	rematch_button.disabled = is_networked and not is_host
 	rematch_button.text = "REVANCHA"
+	_apply_menu_profile_layout()
 	menu_button.grab_focus()
 	visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

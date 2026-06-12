@@ -159,6 +159,8 @@ var _crouch_blend: float = 0.0
 var _standing_collision_height: float = 0.0
 var _crouching_collision_height: float = 0.0
 var _standing_collision_position: Vector3 = Vector3.ZERO
+var _standing_clearance_shape: CapsuleShape3D
+var _standing_clearance_query: PhysicsShapeQueryParameters3D
 var _standing_camera_pivot_position: Vector3 = Vector3.ZERO
 var _standing_body_position: Vector3 = Vector3.ZERO
 var _standing_body_scale: Vector3 = Vector3.ONE
@@ -233,6 +235,10 @@ func _ready() -> void:
 	_previous_camera_yaw = rotation.y
 	_prev_hud_sample_yaw = rotation.y
 	_prev_hud_sample_pitch = _pitch_degrees
+	if PlayerSettings != null:
+		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
+			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+		apply_performance_profile(int(PlayerSettings.performance_profile))
 	_setup_debug_cameras()
 
 
@@ -275,7 +281,8 @@ func _process(delta: float) -> void:
 	_update_crouch_visual(delta)
 	_update_debug_cameras()
 	_update_camera_motion(delta)
-	_update_third_person_visual(delta)
+	if _should_update_third_person_visual():
+		_update_third_person_visual(delta)
 	_update_hud_motion_sample(delta)
 
 
@@ -316,6 +323,18 @@ func is_aiming() -> bool:
 
 func is_local_controlled() -> bool:
 	return _is_locally_controlled()
+
+
+func apply_performance_profile(profile: int) -> void:
+	var safe_profile := clampi(profile, 0, 2)
+	for weapon_node in _weapons:
+		if weapon_node == null:
+			continue
+		if weapon_node.has_method("apply_performance_profile"):
+			weapon_node.apply_performance_profile(safe_profile)
+		var muzzle_flash: Node = weapon_node.get_node_or_null("MuzzleFlash")
+		if muzzle_flash != null and muzzle_flash.has_method("apply_performance_profile"):
+			muzzle_flash.apply_performance_profile(safe_profile)
 
 
 func get_active_weapon_index() -> int:
@@ -576,6 +595,10 @@ func set_body_color(color: Color) -> void:
 	material.albedo_color = color
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	_apply_body_material(body_visual if body_visual != null else body_mesh, material)
+
+
+func _on_performance_profile_changed(profile: int) -> void:
+	apply_performance_profile(int(profile))
 #endregion
 
 
@@ -584,7 +607,10 @@ func _handle_movement(delta: float) -> void:
 	var was_on_floor_before_move: bool = is_on_floor()
 	var input_direction: Vector2 = _get_move_input()
 	_update_wall_jump_timers(delta, was_on_floor_before_move)
-	var wall_normal: Vector3 = _find_wall_normal()
+	var wall_normal: Vector3 = Vector3.ZERO
+	var wants_jump: bool = Input.is_action_just_pressed(_action("jump"))
+	if not was_on_floor_before_move or wants_jump:
+		wall_normal = _find_wall_normal()
 	_update_crouch_state()
 	var wants_sprint: bool = Input.is_action_pressed(_action("sprint")) and not _is_crouching
 	var target_speed: float = run_speed if wants_sprint else walk_speed
@@ -607,7 +633,7 @@ func _handle_movement(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, friction * delta)
 		velocity.z = move_toward(velocity.z, 0.0, friction * delta)
 
-	if Input.is_action_just_pressed(_action("jump")):
+	if wants_jump:
 		var jump_wall_normal: Vector3 = _get_wall_jump_normal(wall_normal)
 		if _can_wall_jump(jump_wall_normal):
 			_perform_wall_jump(jump_wall_normal)
@@ -780,21 +806,22 @@ func _try_set_crouching(should_crouch: bool) -> void:
 
 
 func _can_stand_up() -> bool:
-	if collision_shape == null or not (collision_shape.shape is CapsuleShape3D):
+	if (
+		collision_shape == null
+		or not (collision_shape.shape is CapsuleShape3D)
+		or _standing_clearance_shape == null
+		or _standing_clearance_query == null
+	):
 		return true
 
-	var standing_shape: CapsuleShape3D = collision_shape.shape.duplicate() as CapsuleShape3D
-	standing_shape.height = _standing_collision_height
+	_standing_clearance_shape.height = _standing_collision_height
 	var clearance_position: Vector3 = _standing_collision_position + Vector3.UP * 0.04
 
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = standing_shape
-	query.transform = global_transform * Transform3D(Basis.IDENTITY, clearance_position)
-	query.exclude = [get_rid()]
-	query.collision_mask = collision_mask
-	query.margin = 0.0
+	_standing_clearance_query.transform = global_transform * Transform3D(Basis.IDENTITY, clearance_position)
+	_standing_clearance_query.exclude = [get_rid()]
+	_standing_clearance_query.collision_mask = collision_mask
 
-	var hits: Array[Dictionary] = get_world_3d().direct_space_state.intersect_shape(query, 1)
+	var hits: Array[Dictionary] = get_world_3d().direct_space_state.intersect_shape(_standing_clearance_query, 1)
 	return hits.is_empty()
 
 
@@ -1268,6 +1295,12 @@ func _cache_standing_pose() -> void:
 	_standing_collision_height = capsule_shape.height
 	_crouching_collision_height = maxf(capsule_shape.radius * 2.0, _standing_collision_height * crouch_height_multiplier)
 	_standing_collision_position = collision_shape.position
+	_standing_clearance_shape = CapsuleShape3D.new()
+	_standing_clearance_shape.radius = capsule_shape.radius
+	_standing_clearance_shape.height = _standing_collision_height
+	_standing_clearance_query = PhysicsShapeQueryParameters3D.new()
+	_standing_clearance_query.shape = _standing_clearance_shape
+	_standing_clearance_query.margin = 0.0
 #endregion
 
 
@@ -1308,6 +1341,17 @@ func _update_third_person_weapon_visibility() -> void:
 
 	for weapon_index in range(_third_person_weapon_models.size()):
 		_third_person_weapon_models[weapon_index].visible = should_show_rig and weapon_index == _active_weapon_index
+
+
+func _should_update_third_person_visual() -> bool:
+	if not _is_locally_controlled():
+		return true
+	if not _is_debug_first_person_view():
+		return true
+
+	var body_visible: bool = body_mesh != null and body_mesh.visible
+	var weapon_rig_visible: bool = third_person_weapon_rig != null and third_person_weapon_rig.visible
+	return body_visible or weapon_rig_visible
 
 
 func _update_third_person_visual(delta: float) -> void:

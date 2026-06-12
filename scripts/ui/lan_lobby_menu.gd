@@ -26,7 +26,16 @@ const TIME_OF_DAY_NIGHT: int = 2
 const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
 const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
 const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
+const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
+const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.74, 0.74)
+const DEFAULT_CONTENT_SEPARATION: int = 10
+const ULTRA_LOW_CONTENT_SEPARATION: int = 6
+const DEFAULT_SCREEN_SEPARATION: int = 8
+const ULTRA_LOW_SCREEN_SEPARATION: int = 5
+const DEFAULT_SESSION_LIST_SIZE: Vector2 = Vector2(280.0, 120.0)
+const ULTRA_LOW_SESSION_LIST_SIZE: Vector2 = Vector2(260.0, 86.0)
 
+@onready var content: VBoxContainer = $Center/Content
 @onready var status_label: Label = %StatusLabel
 @onready var entry_screen: VBoxContainer = %EntryScreen
 @onready var setup_screen: VBoxContainer = %SetupScreen
@@ -78,6 +87,8 @@ func _ready() -> void:
 	set_status("Elegí cómo entrar a la arena.")
 	if PlayerSettings != null:
 		PlayerSettings.settings_changed.connect(_on_settings_changed)
+		PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+	_apply_menu_profile_layout()
 
 
 func _process(delta: float) -> void:
@@ -215,6 +226,11 @@ func _connect_buttons() -> void:
 
 func _on_settings_changed() -> void:
 	ArenaMenuStyleScript.apply_to_menu(self)
+	_apply_menu_profile_layout()
+
+
+func _on_performance_profile_changed(_profile: int) -> void:
+	_apply_menu_profile_layout()
 
 
 func _on_practice_entry_pressed() -> void:
@@ -315,6 +331,7 @@ func _on_session_activated(index: int) -> void:
 
 func _on_manual_join_toggled(enabled: bool) -> void:
 	manual_join_panel.visible = enabled
+	_apply_menu_profile_layout()
 
 
 func _on_join_manual_pressed() -> void:
@@ -354,6 +371,7 @@ func _show_screen(screen: int) -> void:
 	lan_choice_screen.visible = screen == Screen.LAN_CHOICE
 	host_screen.visible = screen == Screen.HOST
 	join_screen.visible = screen == Screen.JOIN
+	_apply_menu_profile_layout()
 	_focus_current_screen()
 
 
@@ -436,6 +454,7 @@ func _update_setup_visibility() -> void:
 			limit_row.visible = false
 		if time_row != null:
 			time_row.visible = false
+	_apply_menu_profile_layout()
 
 
 func _update_win_mode_ui() -> void:
@@ -446,6 +465,33 @@ func _update_win_mode_ui() -> void:
 		limit_label.text = "BAJAS"
 	if time_row != null:
 		time_row.visible = is_time_mode
+	_apply_menu_profile_layout()
+
+
+func _apply_menu_profile_layout() -> void:
+	var use_ultra_low_layout: bool = PlayerSettings != null and PlayerSettings.is_ultra_low_profile()
+	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
+	var content_separation: int = ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION
+	var screen_separation: int = ULTRA_LOW_SCREEN_SEPARATION if use_ultra_low_layout else DEFAULT_SCREEN_SEPARATION
+	if content != null:
+		content.scale = menu_scale
+		content.add_theme_constant_override("separation", content_separation)
+	for screen_container in [
+		entry_screen,
+		setup_screen,
+		lan_choice_screen,
+		host_screen,
+		join_screen,
+		manual_join_panel,
+	]:
+		if screen_container is VBoxContainer:
+			(screen_container as VBoxContainer).add_theme_constant_override("separation", screen_separation)
+	if session_list != null:
+		session_list.custom_minimum_size = (
+			ULTRA_LOW_SESSION_LIST_SIZE if use_ultra_low_layout else DEFAULT_SESSION_LIST_SIZE
+		)
+	if content != null:
+		content.pivot_offset = content.get_combined_minimum_size() * 0.5 if use_ultra_low_layout else Vector2.ZERO
 
 
 func _select_time_of_day(preset: int) -> void:

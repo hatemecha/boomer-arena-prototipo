@@ -76,7 +76,6 @@ layout_mode = 2
 text = "24 / 96"
 
 [node name="FpsRow" type="HBoxContainer" parent="Stats"]
-visible = false
 layout_mode = 2
 theme_override_constants/separation = 6
 
@@ -91,7 +90,7 @@ modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="FpsLabel" type="Label" parent="Stats/FpsRow"]
 layout_mode = 2
-text = "0"
+text = "0 FPS"
 
 [node name="PositionRow" type="HBoxContainer" parent="Stats"]
 visible = false

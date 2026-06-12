@@ -98,6 +98,8 @@ func _ready() -> void:
 	_setup_death_cinematic()
 	if PlayerSettings != null:
 		PlayerSettings.apply_to_visual_director(_visual_director)
+		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
+			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
 	_debug_draw_manager.bind_context(_spawn_manager, _pickup_spawner, players)
 
 	var started_from_args: bool = _network_manager.apply_startup_args()
@@ -118,6 +120,11 @@ func _physics_process(delta: float) -> void:
 		return
 	_network_sync_accumulator = 0.0
 	_send_local_player_state()
+
+
+func _on_performance_profile_changed(_profile: int) -> void:
+	if PlayerSettings != null:
+		PlayerSettings.apply_to_visual_director(_visual_director)
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -13,6 +13,7 @@ var _players: Array[PlayerController] = []
 
 func _ready() -> void:
 	add_to_group("arena_debug_draw")
+	set_process(debug_draw_enabled)
 
 
 func bind_context(spawn_manager: SpawnManager, pickup_spawner: PickupSpawner, players: Array[PlayerController]) -> void:
@@ -42,6 +43,7 @@ func _process(_delta: float) -> void:
 
 func set_debug_draw_enabled(value: bool) -> void:
 	debug_draw_enabled = value
+	set_process(debug_draw_enabled)
 	debug_draw_toggled.emit(debug_draw_enabled)
 
 

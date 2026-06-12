@@ -8,6 +8,11 @@ const CONE_LAYER := "MuzzleCone"
 const BEAM_LAYER := "BeamFlash"
 const SPARKS_LAYER := "MuzzleSparks"
 
+static var _shared_curve_textures: Dictionary = {}
+static var _shared_quad_meshes: Dictionary = {}
+static var _shared_soft_glow_texture: GradientTexture2D
+static var _shared_fire_streak_texture: NoiseTexture2D
+
 @export var flash_color: Color = Color(1.65, 0.85, 0.18, 1.0)
 @export var spark_color: Color = Color(1.9, 0.95, 0.22, 1.0)
 @export_range(0.04, 0.1, 0.005) var flash_lifetime: float = 0.05
@@ -16,14 +21,19 @@ const SPARKS_LAYER := "MuzzleSparks"
 @export var forward_axis: Vector3 = Vector3.FORWARD
 
 var _layers: Array[GPUParticles3D] = []
-var _generated_textures: Array[Texture2D] = []
+var _layers_built: bool = false
+var _performance_profile: int = 0
 
 
 func _ready() -> void:
-	_rebuild_layers()
+	if PlayerSettings != null:
+		_performance_profile = int(PlayerSettings.performance_profile)
 
 
 func trigger_shot() -> void:
+	if not _layers_built:
+		_rebuild_layers()
+
 	for layer in _layers:
 		if not is_instance_valid(layer):
 			continue
@@ -31,22 +41,36 @@ func trigger_shot() -> void:
 		layer.emitting = true
 
 
+func apply_performance_profile(profile: int) -> void:
+	var safe_profile := clampi(profile, 0, 2)
+	if _performance_profile == safe_profile:
+		return
+
+	_performance_profile = safe_profile
+	if _layers_built:
+		_rebuild_layers()
+
+
 func _rebuild_layers() -> void:
 	for child in get_children():
 		child.queue_free()
 
 	_layers.clear()
-	_generated_textures.clear()
 
 	var direction := _get_forward_direction()
 	_layers.append(_create_main_flash_layer(direction))
-	_layers.append(_create_cone_layer(direction))
-	_layers.append(_create_beam_layer())
-	_layers.append(_create_sparks_layer(direction))
+	if _performance_profile == 0:
+		_layers.append(_create_cone_layer(direction))
+		_layers.append(_create_beam_layer())
+		_layers.append(_create_sparks_layer(direction, spark_count))
+	elif _performance_profile == 1:
+		_layers.append(_create_beam_layer())
+		_layers.append(_create_sparks_layer(direction, mini(spark_count, 4)))
 
 	for layer in _layers:
 		add_child(layer)
 		layer.owner = owner
+	_layers_built = true
 
 
 func _create_main_flash_layer(direction: Vector3) -> GPUParticles3D:
@@ -93,7 +117,7 @@ func _create_beam_layer() -> GPUParticles3D:
 	)
 
 
-func _create_sparks_layer(direction: Vector3) -> GPUParticles3D:
+func _create_sparks_layer(direction: Vector3, amount: int) -> GPUParticles3D:
 	var process := ParticleProcessMaterial.new()
 	process.direction = direction
 	process.spread = 10.0
@@ -111,7 +135,7 @@ func _create_sparks_layer(direction: Vector3) -> GPUParticles3D:
 
 	return _create_layer(
 		SPARKS_LAYER,
-		spark_count,
+		amount,
 		spark_lifetime,
 		0.95,
 		_create_quad_mesh(Vector2(0.035, 0.22)),
@@ -265,8 +289,13 @@ func _create_open_cone_mesh(
 
 
 func _create_quad_mesh(size: Vector2) -> QuadMesh:
+	var cache_key := "%.3f:%.3f" % [size.x, size.y]
+	if _shared_quad_meshes.has(cache_key):
+		return _shared_quad_meshes[cache_key] as QuadMesh
+
 	var quad := QuadMesh.new()
 	quad.size = size
+	_shared_quad_meshes[cache_key] = quad
 	return quad
 
 
@@ -310,12 +339,19 @@ func _create_spark_scale_curve() -> CurveTexture:
 
 
 func _create_curve_texture(points: Array[Vector2]) -> CurveTexture:
+	var cache_key := ""
+	for point in points:
+		cache_key += "%.3f,%.3f|" % [point.x, point.y]
+	if _shared_curve_textures.has(cache_key):
+		return _shared_curve_textures[cache_key] as CurveTexture
+
 	var curve := Curve.new()
 	for point in points:
 		curve.add_point(point)
 
 	var texture := CurveTexture.new()
 	texture.curve = curve
+	_shared_curve_textures[cache_key] = texture
 	return texture
 
 
@@ -334,6 +370,9 @@ func _create_spark_alpha_ramp() -> GradientTexture1D:
 
 
 func _create_soft_glow_texture() -> GradientTexture2D:
+	if _shared_soft_glow_texture != null:
+		return _shared_soft_glow_texture
+
 	var gradient := Gradient.new()
 	gradient.set_color(0, Color(1.0, 0.82, 0.28, 0.82))
 	gradient.set_offset(0, 0.0)
@@ -349,11 +388,14 @@ func _create_soft_glow_texture() -> GradientTexture2D:
 	texture.fill_from = Vector2(0.5, 0.5)
 	texture.fill_to = Vector2(0.5, 0.0)
 	texture.gradient = gradient
-	_generated_textures.append(texture)
+	_shared_soft_glow_texture = texture
 	return texture
 
 
 func _create_fire_streak_texture() -> NoiseTexture2D:
+	if _shared_fire_streak_texture != null:
+		return _shared_fire_streak_texture
+
 	var noise := FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	noise.frequency = 0.38
@@ -364,7 +406,7 @@ func _create_fire_streak_texture() -> NoiseTexture2D:
 	texture.height = 16
 	texture.seamless = true
 	texture.noise = noise
-	_generated_textures.append(texture)
+	_shared_fire_streak_texture = texture
 	return texture
 
 

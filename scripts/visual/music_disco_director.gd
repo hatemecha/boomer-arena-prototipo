@@ -5,6 +5,7 @@ extends Node
 @export_range(0.0, 1.0) var intensity: float = 1.0
 @export_range(0.0, 4.0) var fade_in_duration: float = 1.5
 @export_range(0.0, 2.0) var fade_out_duration: float = 0.8
+@export_range(1.0, 60.0, 1.0) var update_rate_hz: float = 60.0
 
 # How strongly bass reinforces beat pulse (0 = BPM-only, 1 = full bass-reactive)
 @export_range(0.0, 1.0) var bass_influence: float = 0.7
@@ -87,11 +88,18 @@ var _last_beat_index: int = -1
 var _current_color_index: int = 0
 var _smoothed_bass: float = 0.0
 var _current_beat_pulse: float = 0.0
+var _tick_accumulator: float = 0.0
+var _dynamic_light_blend_enabled: bool = true
 
 
 func _ready() -> void:
+	set_process(false)
 	_palette_extractor = CoverPaletteExtractor.new()
 	_palette = _palette_extractor.get_fallback_palette()
+	if PlayerSettings != null:
+		if not PlayerSettings.performance_profile_changed.is_connected(_on_performance_profile_changed):
+			PlayerSettings.performance_profile_changed.connect(_on_performance_profile_changed)
+		apply_performance_profile(int(PlayerSettings.performance_profile))
 
 
 func bind(music_stereo: MusicStereo, visual_director: PSXVisualDirector) -> void:
@@ -113,11 +121,22 @@ func bind(music_stereo: MusicStereo, visual_director: PSXVisualDirector) -> void
 		_palette = _palette_extractor.extract(
 			_music_stereo.get_current_cover(), _music_stereo.get_track_index()
 		)
+	_update_process_state()
 
 
 func _process(delta: float) -> void:
+	var step_delta: float = delta
+	if update_rate_hz > 0.0 and update_rate_hz < 59.0:
+		_tick_accumulator += delta
+		var interval := 1.0 / update_rate_hz
+		if _tick_accumulator < interval:
+			return
+		step_delta = _tick_accumulator
+		_tick_accumulator = 0.0
+
 	if not enabled or _music_stereo == null:
-		_blend_out(delta)
+		_blend_out(step_delta)
+		_update_process_state()
 		return
 
 	if _music_stereo.is_playing():
@@ -125,10 +144,27 @@ func _process(delta: float) -> void:
 			_is_active = true
 			_capture_baseline_if_needed()
 
-		_blend_factor = minf(_blend_factor + delta / maxf(fade_in_duration, 0.01), 1.0)
-		_tick_disco(delta)
+		_blend_factor = minf(_blend_factor + step_delta / maxf(fade_in_duration, 0.01), 1.0)
+		_tick_disco(step_delta)
 	else:
-		_blend_out(delta)
+		_blend_out(step_delta)
+	_update_process_state()
+
+
+func apply_performance_profile(profile: int) -> void:
+	var safe_profile := clampi(profile, 0, 2)
+	match safe_profile:
+		PlayerSettings.PerformanceProfile.LOW:
+			update_rate_hz = 20.0
+			_dynamic_light_blend_enabled = true
+		PlayerSettings.PerformanceProfile.ULTRA_LOW:
+			update_rate_hz = 10.0
+			_dynamic_light_blend_enabled = false
+		_:
+			update_rate_hz = 60.0
+			_dynamic_light_blend_enabled = true
+	_tick_accumulator = 0.0
+	_update_process_state()
 
 
 func _blend_out(delta: float) -> void:
@@ -200,25 +236,28 @@ func _apply_lights_blend(blend: float, beat_pulse: float) -> void:
 	var arena_scale := lerpf(arena_energy_min, arena_energy_max, beat_pulse)
 	var fill_scale := lerpf(fill_energy_min, fill_energy_max, beat_pulse)
 
-	for i in _arena_lights.size():
-		var light := _arena_lights[i]
-		if light == null:
-			continue
-		var disco_color := _boosted_color(_palette[(_current_color_index + i) % _palette.size()])
-		var base_color := _baseline_arena_colors[i] if i < _baseline_arena_colors.size() else Color.WHITE
-		var base_energy := _baseline_arena_energies[i] if i < _baseline_arena_energies.size() else 1.0
-		light.light_color = base_color.lerp(disco_color, blend)
-		light.light_energy = base_energy * lerpf(1.0, arena_scale, blend)
+	if _dynamic_light_blend_enabled:
+		for i in _arena_lights.size():
+			var light := _arena_lights[i]
+			if light == null:
+				continue
+			var disco_color := _boosted_color(_palette[(_current_color_index + i) % _palette.size()])
+			var base_color := _baseline_arena_colors[i] if i < _baseline_arena_colors.size() else Color.WHITE
+			var base_energy := _baseline_arena_energies[i] if i < _baseline_arena_energies.size() else 1.0
+			light.light_color = base_color.lerp(disco_color, blend)
+			light.light_energy = base_energy * lerpf(1.0, arena_scale, blend)
 
-	for i in _window_fill_lights.size():
-		var light := _window_fill_lights[i]
-		if light == null:
-			continue
-		var disco_color := _boosted_color(_palette[(_current_color_index + 2 + i) % _palette.size()])
-		var base_color := _baseline_fill_colors[i] if i < _baseline_fill_colors.size() else Color.WHITE
-		var base_energy := _baseline_fill_energies[i] if i < _baseline_fill_energies.size() else 1.0
-		light.light_color = base_color.lerp(disco_color, blend)
-		light.light_energy = base_energy * lerpf(1.0, fill_scale, blend)
+		for i in _window_fill_lights.size():
+			var light := _window_fill_lights[i]
+			if light == null:
+				continue
+			var disco_color := _boosted_color(_palette[(_current_color_index + 2 + i) % _palette.size()])
+			var base_color := _baseline_fill_colors[i] if i < _baseline_fill_colors.size() else Color.WHITE
+			var base_energy := _baseline_fill_energies[i] if i < _baseline_fill_energies.size() else 1.0
+			light.light_color = base_color.lerp(disco_color, blend)
+			light.light_energy = base_energy * lerpf(1.0, fill_scale, blend)
+	else:
+		_restore_dynamic_light_baselines()
 
 	for i in _panel_materials.size():
 		var mat := _panel_materials[i]
@@ -392,6 +431,7 @@ func _on_track_changed(
 	_palette = _palette_extractor.extract(cover, _music_stereo.get_track_index())
 	_last_beat_index = -1
 	_current_color_index = 0
+	_update_process_state()
 
 
 func _sample_bass_energy() -> float:
@@ -450,3 +490,32 @@ func _collect_meshes_by_prefix(root: Node, prefix: String, output: Array[MeshIns
 
 func _boosted_color(c: Color) -> Color:
 	return Color.from_hsv(c.h, clampf(c.s * palette_saturation_boost, 0.0, 1.0), c.v)
+
+
+func _restore_dynamic_light_baselines() -> void:
+	for i in _arena_lights.size():
+		var light := _arena_lights[i]
+		if light == null:
+			continue
+		light.light_color = _baseline_arena_colors[i] if i < _baseline_arena_colors.size() else light.light_color
+		light.light_energy = _baseline_arena_energies[i] if i < _baseline_arena_energies.size() else light.light_energy
+
+	for i in _window_fill_lights.size():
+		var light := _window_fill_lights[i]
+		if light == null:
+			continue
+		light.light_color = _baseline_fill_colors[i] if i < _baseline_fill_colors.size() else light.light_color
+		light.light_energy = _baseline_fill_energies[i] if i < _baseline_fill_energies.size() else light.light_energy
+
+
+func _update_process_state() -> void:
+	var should_process := (
+		enabled
+		and _music_stereo != null
+		and (_music_stereo.is_playing() or _blend_factor > 0.0)
+	)
+	set_process(should_process)
+
+
+func _on_performance_profile_changed(profile: int) -> void:
+	apply_performance_profile(profile)
