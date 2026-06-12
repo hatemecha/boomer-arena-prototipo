@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" path="res://assets/models/pickups/low_poly_ammo_can.glb" id="2_ammo_can"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_pickup"]
-radius = 0.75
+radius = 2.4
 
 [node name="AmmoPickup" type="Area3D"]
 script = ExtResource("1_ammo")

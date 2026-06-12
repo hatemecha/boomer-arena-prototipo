@@ -29,6 +29,10 @@ extends Control
 @onready var speed_label: Label = get_node_or_null("Stats/SpeedRow/SpeedLabel") as Label
 @onready var crosshair: Control = get_node_or_null("Crosshair") as Control
 @onready var aim_dot: ColorRect = get_node_or_null("AimDot") as ColorRect
+@onready var pickup_interaction_panel: Control = get_node_or_null("PickupInteractionPanel") as Control
+@onready var pickup_interaction_label: Label = get_node_or_null("PickupInteractionPanel/PromptLabel") as Label
+@onready var pickup_interaction_track: ColorRect = get_node_or_null("PickupInteractionPanel/Track") as ColorRect
+@onready var pickup_interaction_fill: ColorRect = get_node_or_null("PickupInteractionPanel/Track/Fill") as ColorRect
 @onready var music_panel: Control = get_node_or_null("MusicPanel") as Control
 @onready var music_cover: TextureRect = get_node_or_null("MusicPanel/Cover") as TextureRect
 @onready var music_title_label: Label = get_node_or_null("MusicPanel/Metadata/TitleLabel") as Label
@@ -66,6 +70,9 @@ const MATCH_OBJECTIVE_SUB_DEFAULT_OFFSETS: Vector4 = Vector4(-120.0, 38.0, 120.0
 const MATCH_OBJECTIVE_SUB_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-90.0, 22.0, 90.0, 34.0)
 const INTERACTION_HINT_DEFAULT_OFFSETS: Vector4 = Vector4(-92.0, 28.0, 92.0, 44.0)
 const INTERACTION_HINT_ULTRA_LOW_OFFSETS: Vector4 = Vector4(-74.0, 20.0, 74.0, 34.0)
+const PICKUP_PANEL_SIZE: Vector2 = Vector2(174.0, 31.0)
+const PICKUP_PANEL_TOP_OFFSET: float = 28.0
+const PICKUP_BAR_SIZE: Vector2 = Vector2(150.0, 5.0)
 const DEFAULT_PANEL_SCALE: Vector2 = Vector2(0.68, 0.68)
 const ULTRA_LOW_PANEL_SCALE: Vector2 = Vector2(0.48, 0.48)
 const DEFAULT_MUSIC_SCALE: Vector2 = Vector2.ONE
@@ -110,6 +117,7 @@ const KILL_FEED_LIFETIME: float = 4.0
 func _ready() -> void:
 	process_priority = 1
 	_ensure_optional_labels()
+	_ensure_pickup_interaction_widgets()
 	_capture_hud_base_offsets()
 	resized.connect(_center_crosshair)
 	call_deferred("_center_crosshair")
@@ -124,6 +132,8 @@ func _ready() -> void:
 		interaction_hint.visible = false
 	if aim_dot != null:
 		aim_dot.visible = false
+	if pickup_interaction_panel != null:
+		pickup_interaction_panel.visible = false
 	apply_accent_theme()
 	_cache_crosshair_capabilities()
 	if PlayerSettings != null:
@@ -147,6 +157,10 @@ func apply_accent_theme() -> void:
 		interaction_hint.modulate = accent
 	if aim_dot != null:
 		aim_dot.color = Color(accent.r, accent.g, accent.b, 0.9)
+	if pickup_interaction_label != null:
+		pickup_interaction_label.modulate = accent
+	if pickup_interaction_fill != null:
+		pickup_interaction_fill.color = Color(accent.r, accent.g, accent.b, 0.95)
 	if music_state_label != null:
 		music_state_label.modulate = accent
 	_update_health_tint()
@@ -191,6 +205,8 @@ func bind_player(player: PlayerController) -> void:
 	player.health.health_changed.connect(_on_health_changed)
 	player.debug_stats_changed.connect(_on_debug_stats_changed)
 	player.active_weapon_changed.connect(_on_active_weapon_changed)
+	if not player.pickup_interaction_changed.is_connected(_on_pickup_interaction_changed):
+		player.pickup_interaction_changed.connect(_on_pickup_interaction_changed)
 	_on_active_weapon_changed(player.weapon)
 
 	if _active_weapon == null:
@@ -456,6 +472,18 @@ func _center_crosshair() -> void:
 	crosshair.offset_top = -crosshair_size.y * 0.5
 	crosshair.offset_right = crosshair_size.x * 0.5
 	crosshair.offset_bottom = crosshair_size.y * 0.5
+	_position_pickup_interaction_panel(crosshair_size)
+
+
+func _position_pickup_interaction_panel(crosshair_size: Vector2 = Vector2(32.0, 32.0)) -> void:
+	if pickup_interaction_panel == null:
+		return
+
+	pickup_interaction_panel.set_anchors_preset(Control.PRESET_CENTER, false)
+	pickup_interaction_panel.offset_left = -PICKUP_PANEL_SIZE.x * 0.5
+	pickup_interaction_panel.offset_top = crosshair_size.y * 0.5 + PICKUP_PANEL_TOP_OFFSET
+	pickup_interaction_panel.offset_right = PICKUP_PANEL_SIZE.x * 0.5
+	pickup_interaction_panel.offset_bottom = pickup_interaction_panel.offset_top + PICKUP_PANEL_SIZE.y
 
 
 func _on_match_started() -> void:
@@ -800,6 +828,69 @@ func _ensure_optional_labels() -> void:
 		var ping_row_data: Dictionary = HudIcons.make_stat_row("PingRow", "PingLabel", HudIcons.PING)
 		stats.add_child(ping_row_data["row"])
 		ping_label = ping_row_data["label"] as Label
+
+
+func _ensure_pickup_interaction_widgets() -> void:
+	if pickup_interaction_panel != null:
+		return
+
+	pickup_interaction_panel = Control.new()
+	pickup_interaction_panel.name = "PickupInteractionPanel"
+	pickup_interaction_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pickup_interaction_panel.custom_minimum_size = PICKUP_PANEL_SIZE
+	add_child(pickup_interaction_panel)
+
+	pickup_interaction_label = Label.new()
+	pickup_interaction_label.name = "PromptLabel"
+	pickup_interaction_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pickup_interaction_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	pickup_interaction_label.offset_left = 0.0
+	pickup_interaction_label.offset_top = 0.0
+	pickup_interaction_label.offset_right = 0.0
+	pickup_interaction_label.offset_bottom = 18.0
+	pickup_interaction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pickup_interaction_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pickup_interaction_label.add_theme_font_size_override("font_size", 12)
+	pickup_interaction_panel.add_child(pickup_interaction_label)
+
+	pickup_interaction_track = ColorRect.new()
+	pickup_interaction_track.name = "Track"
+	pickup_interaction_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pickup_interaction_track.color = Color(0.02, 0.02, 0.02, 0.78)
+	pickup_interaction_track.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	pickup_interaction_track.offset_left = (PICKUP_PANEL_SIZE.x - PICKUP_BAR_SIZE.x) * 0.5
+	pickup_interaction_track.offset_top = 23.0
+	pickup_interaction_track.offset_right = pickup_interaction_track.offset_left + PICKUP_BAR_SIZE.x
+	pickup_interaction_track.offset_bottom = pickup_interaction_track.offset_top + PICKUP_BAR_SIZE.y
+	pickup_interaction_panel.add_child(pickup_interaction_track)
+
+	pickup_interaction_fill = ColorRect.new()
+	pickup_interaction_fill.name = "Fill"
+	pickup_interaction_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pickup_interaction_fill.color = HudIcons.get_tag_tint()
+	pickup_interaction_fill.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	pickup_interaction_fill.offset_left = 0.0
+	pickup_interaction_fill.offset_top = 0.0
+	pickup_interaction_fill.offset_right = 0.0
+	pickup_interaction_fill.offset_bottom = PICKUP_BAR_SIZE.y
+	pickup_interaction_track.add_child(pickup_interaction_fill)
+	_position_pickup_interaction_panel()
+
+
+func _on_pickup_interaction_changed(prompt: String, progress: float, is_visible: bool, can_collect: bool) -> void:
+	if pickup_interaction_panel == null:
+		return
+
+	pickup_interaction_panel.visible = is_visible
+	if not is_visible:
+		return
+
+	if pickup_interaction_label != null:
+		pickup_interaction_label.text = prompt.to_upper()
+		pickup_interaction_label.modulate = HudIcons.get_tag_tint() if can_collect else HudIcons.HUD_WARN_TINT
+	if pickup_interaction_fill != null:
+		pickup_interaction_fill.color = HudIcons.get_tag_tint() if can_collect else HudIcons.HUD_WARN_TINT
+		pickup_interaction_fill.offset_right = PICKUP_BAR_SIZE.x * clampf(progress, 0.0, 1.0)
 
 
 func _update_health_tint() -> void:

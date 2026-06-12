@@ -21,6 +21,7 @@ signal damaged(amount: int)
 signal died
 signal respawned
 signal weapon_fired(weapon_name: String)
+signal pickup_interaction_changed(prompt: String, progress: float, is_visible: bool, can_collect: bool)
 
 @export_range(1.0, 30.0) var walk_speed: float = 7.5
 @export_range(1.0, 40.0) var run_speed: float = 12.5
@@ -323,6 +324,20 @@ func is_aiming() -> bool:
 
 func is_local_controlled() -> bool:
 	return _is_locally_controlled()
+
+
+func is_alive() -> bool:
+	return not _is_dead
+
+
+func is_interact_pressed() -> bool:
+	return _is_locally_controlled() and _gameplay_input_enabled and not _is_dead and Input.is_action_pressed(_action("interact"))
+
+
+func set_pickup_interaction(prompt: String, progress: float, is_visible: bool, can_collect: bool = true) -> void:
+	if not _is_locally_controlled():
+		return
+	pickup_interaction_changed.emit(prompt, clampf(progress, 0.0, 1.0), is_visible, can_collect)
 
 
 func apply_performance_profile(profile: int) -> void:

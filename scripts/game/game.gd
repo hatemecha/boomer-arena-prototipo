@@ -1200,6 +1200,8 @@ func _apply_player_pickup(pickup_id: int, player_id: int) -> void:
 	var player: PlayerController = _get_player_by_player_id(player_id)
 	if player == null:
 		return
+	if not pickup.can_player_collect_now(player):
+		return
 
 	if pickup.collect_for_player(player):
 		_sync_player_health_to_peers(player)

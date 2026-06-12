@@ -6,6 +6,9 @@ signal availability_changed(pickup_id: int, is_available: bool)
 const OUTLINE_SHADER: Shader = preload("res://shaders/pickup_outline.gdshader")
 
 @export_range(0.1, 120.0) var respawn_time: float = 15.0
+@export_range(0.1, 10.0, 0.1) var hold_to_collect_time: float = 1.5
+@export_range(1.0, 8.0, 0.1) var hold_release_decay_multiplier: float = 2.0
+@export_range(0.75, 5.0, 0.05) var server_collect_max_distance: float = 3.25
 @export_range(0.0, 10.0) var rotation_speed: float = 2.5
 @export_range(0.005, 0.08, 0.001) var outline_width: float = 0.03
 @export_range(0.5, 3.0, 0.05) var outline_brightness_min: float = 1.05
@@ -31,6 +34,9 @@ var _pulse_time: float = 0.0
 var _presentation_update_hz: float = 60.0
 var _presentation_accumulator: float = 0.0
 var _dynamic_glow_enabled: bool = true
+var _near_players: Array[PlayerController] = []
+var _active_player: PlayerController
+var _hold_progress: float = 0.0
 
 
 func _ready() -> void:
@@ -38,6 +44,7 @@ func _ready() -> void:
 	_audio_player.name = "PickupAudio"
 	add_child(_audio_player)
 	body_entered.connect(_on_body_entered)
+	body_exited.connect(_on_body_exited)
 
 	if visual_root != null:
 		_visual_rest_y = visual_root.position.y
@@ -57,6 +64,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _is_available:
 		return
+
+	_update_hold_interaction(delta)
 
 	var step_delta: float = delta
 	if _presentation_update_hz > 0.0 and _presentation_update_hz < 59.0:
@@ -82,12 +91,28 @@ func apply_to_player(_player: PlayerController) -> bool:
 	return false
 
 
+func can_apply_to_player(_player: PlayerController) -> bool:
+	return true
+
+
+func get_interaction_prompt(_player: PlayerController) -> String:
+	return "MANTENER E"
+
+
 func set_pickup_id(next_pickup_id: int) -> void:
 	pickup_id = next_pickup_id
 
 
 func is_available() -> bool:
 	return _is_available
+
+
+func can_player_collect_now(player: PlayerController) -> bool:
+	if not _is_available or player == null:
+		return false
+	if player.health != null and player.health.is_dead:
+		return false
+	return global_position.distance_to(player.global_position) <= server_collect_max_distance
 
 
 func apply_performance_profile(profile: int) -> void:
@@ -126,8 +151,107 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 
 	var player: PlayerController = body as PlayerController
-	if collect_for_player(player):
-		_request_network_pickup(player)
+	if not _near_players.has(player):
+		_near_players.append(player)
+
+
+func _on_body_exited(body: Node3D) -> void:
+	var player: PlayerController = body as PlayerController
+	if player == null:
+		return
+
+	_near_players.erase(player)
+	if _active_player == player:
+		_clear_player_pickup_interaction(_active_player)
+		_active_player = null
+		_hold_progress = 0.0
+
+
+func _update_hold_interaction(delta: float) -> void:
+	_sync_overlapping_players()
+	var candidate := _select_interacting_player()
+	var can_apply: bool = candidate != null and can_apply_to_player(candidate)
+	var is_holding: bool = can_apply and candidate.is_interact_pressed()
+	if candidate != null:
+		_active_player = candidate
+	elif _hold_progress <= 0.0:
+		_clear_player_pickup_interaction(_active_player)
+		_active_player = null
+
+	if is_holding:
+		_hold_progress = minf(_hold_progress + delta / hold_to_collect_time, 1.0)
+	elif _hold_progress > 0.0:
+		_hold_progress = maxf(_hold_progress - (delta * hold_release_decay_multiplier) / hold_to_collect_time, 0.0)
+
+	_update_pickup_interaction_hud(can_apply)
+
+	if _hold_progress < 1.0 or _active_player == null:
+		return
+
+	var collector := _active_player
+	_hold_progress = 0.0
+	_active_player = null
+	_clear_player_pickup_interaction(collector)
+	if collect_for_player(collector):
+		_request_network_pickup(collector)
+
+
+func _select_interacting_player() -> PlayerController:
+	_prune_invalid_players()
+	if _near_players.is_empty():
+		return null
+
+	if _active_player != null and _near_players.has(_active_player) and _can_drive_pickup_hold(_active_player):
+		return _active_player
+
+	for player in _near_players:
+		if _can_drive_pickup_hold(player):
+			return player
+
+	return null
+
+
+func _sync_overlapping_players() -> void:
+	var overlapping_players: Array[PlayerController] = []
+	for body in get_overlapping_bodies():
+		var player: PlayerController = body as PlayerController
+		if player == null:
+			continue
+		overlapping_players.append(player)
+		if not _near_players.has(player):
+			_near_players.append(player)
+
+	for index in range(_near_players.size() - 1, -1, -1):
+		var player: PlayerController = _near_players[index]
+		if player == null or not is_instance_valid(player) or not overlapping_players.has(player):
+			_near_players.remove_at(index)
+			if _active_player == player:
+				_clear_player_pickup_interaction(_active_player)
+				_active_player = null
+				_hold_progress = 0.0
+
+
+func _can_drive_pickup_hold(player: PlayerController) -> bool:
+	return player != null and player.is_local_controlled() and player.is_alive()
+
+
+func _prune_invalid_players() -> void:
+	for index in range(_near_players.size() - 1, -1, -1):
+		var player: PlayerController = _near_players[index]
+		if player == null or not is_instance_valid(player):
+			_near_players.remove_at(index)
+
+
+func _update_pickup_interaction_hud(can_apply: bool) -> void:
+	if _active_player == null:
+		return
+	_active_player.set_pickup_interaction(get_interaction_prompt(_active_player), _hold_progress, true, can_apply)
+
+
+func _clear_player_pickup_interaction(player: PlayerController) -> void:
+	if player == null:
+		return
+	player.set_pickup_interaction("", 0.0, false, false)
 
 
 func _disable_temporarily() -> void:
@@ -143,6 +267,11 @@ func _set_available(is_next_available: bool, should_emit_signal: bool) -> void:
 	visible = is_next_available
 	set_process(is_next_available)
 	set_deferred("monitoring", is_next_available)
+	if not is_next_available:
+		_near_players.clear()
+		_clear_player_pickup_interaction(_active_player)
+		_active_player = null
+		_hold_progress = 0.0
 	if collision_shape != null:
 		collision_shape.set_deferred("disabled", not is_next_available)
 	_update_pickup_glow_visibility()
