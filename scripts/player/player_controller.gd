@@ -1533,6 +1533,7 @@ func _on_weapon_fired(fired_weapon: WeaponBase) -> void:
 	_recoil_pitch_offset = -fired_weapon.recoil_degrees
 	_recoil_tween = create_tween()
 	_recoil_tween.tween_method(_set_recoil_pitch_offset, _recoil_pitch_offset, 0.0, 0.11)
+	_weapon_motion.apply_fire_kick(fired_weapon)
 	weapon_fired.emit(fired_weapon.weapon_name)
 
 

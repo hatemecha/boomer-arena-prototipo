@@ -6,10 +6,15 @@ const MIN_SPEED_DENOMINATOR: float = 0.001
 const MAX_WEAPON_OFFSET_IDLE: float = 0.3
 const MAX_WEAPON_OFFSET_AIM: float = 0.2
 const RELOAD_MOTION_DAMP: float = 0.12
+const FIRE_KICK_DECAY_SPEED: float = 22.0
+const MAX_FIRE_KICK_POSITION: float = 0.22
+const MAX_FIRE_KICK_ROTATION: float = 0.42
 
 var _sway_position: Vector3 = Vector3.ZERO
 var _sway_rotation: Vector3 = Vector3.ZERO
 var _velocity_sway: Vector3 = Vector3.ZERO
+var _fire_kick_position: Vector3 = Vector3.ZERO
+var _fire_kick_rotation: Vector3 = Vector3.ZERO
 var _previous_yaw: float = 0.0
 var _previous_pitch: float = 0.0
 
@@ -18,8 +23,36 @@ func reset(yaw_radians: float, pitch_degrees: float) -> void:
 	_sway_position = Vector3.ZERO
 	_sway_rotation = Vector3.ZERO
 	_velocity_sway = Vector3.ZERO
+	_fire_kick_position = Vector3.ZERO
+	_fire_kick_rotation = Vector3.ZERO
 	_previous_yaw = yaw_radians
 	_previous_pitch = pitch_degrees
+
+
+func apply_fire_kick(active_weapon: WeaponBase) -> void:
+	if active_weapon == null:
+		return
+
+	var kick_strength: float = active_weapon.recoil_degrees * active_weapon.weapon_kick_scale
+	var impulse_position := Vector3(
+		randf_range(-1.0, 1.0) * kick_strength * 0.0035,
+		kick_strength * 0.0065,
+		kick_strength * 0.019
+	)
+	var impulse_rotation := Vector3(
+		-deg_to_rad(kick_strength * 1.35),
+		randf_range(-1.0, 1.0) * deg_to_rad(kick_strength * 0.18),
+		randf_range(-1.0, 1.0) * deg_to_rad(kick_strength * 0.42)
+	)
+
+	_fire_kick_position += impulse_position
+	_fire_kick_rotation += impulse_rotation
+
+	if _fire_kick_position.length() > MAX_FIRE_KICK_POSITION:
+		_fire_kick_position = _fire_kick_position.normalized() * MAX_FIRE_KICK_POSITION
+	_fire_kick_rotation.x = clampf(_fire_kick_rotation.x, -MAX_FIRE_KICK_ROTATION, MAX_FIRE_KICK_ROTATION)
+	_fire_kick_rotation.y = clampf(_fire_kick_rotation.y, -MAX_FIRE_KICK_ROTATION * 0.35, MAX_FIRE_KICK_ROTATION * 0.35)
+	_fire_kick_rotation.z = clampf(_fire_kick_rotation.z, -MAX_FIRE_KICK_ROTATION * 0.55, MAX_FIRE_KICK_ROTATION * 0.55)
 
 
 func apply_motion(player, active_weapon: WeaponBase, base_transform: Transform3D, delta: float) -> Transform3D:
@@ -44,6 +77,7 @@ func apply_motion(player, active_weapon: WeaponBase, base_transform: Transform3D
 
 	_sway_position = _sway_position.lerp(target_position, smoothing_weight)
 	_sway_rotation = _sway_rotation.lerp(target_rotation, smoothing_weight)
+	_decay_fire_kick(delta)
 
 	return _build_weapon_transform(base_transform, active_weapon)
 
@@ -136,9 +170,17 @@ func _clamp_target_rotation(target_rotation: Vector3) -> Vector3:
 	return target_rotation
 
 
+func _decay_fire_kick(delta: float) -> void:
+	var decay: float = exp(-FIRE_KICK_DECAY_SPEED * delta)
+	_fire_kick_position *= decay
+	_fire_kick_rotation *= decay
+
+
 func _build_weapon_transform(base_transform: Transform3D, active_weapon: WeaponBase) -> Transform3D:
-	var motion_basis: Basis = base_transform.basis * Basis.from_euler(_sway_rotation)
-	var motion_origin: Vector3 = base_transform.origin + base_transform.basis * _sway_position
+	var combined_rotation: Vector3 = _sway_rotation + _fire_kick_rotation
+	var combined_position: Vector3 = _sway_position + _fire_kick_position
+	var motion_basis: Basis = base_transform.basis * Basis.from_euler(combined_rotation)
+	var motion_origin: Vector3 = base_transform.origin + base_transform.basis * combined_position
 	if active_weapon == null:
 		return Transform3D(motion_basis, motion_origin)
 

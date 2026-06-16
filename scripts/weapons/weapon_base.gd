@@ -19,6 +19,7 @@ signal fired(weapon: WeaponBase)
 @export_range(0, 999) var reserve_ammo: int = 96
 @export_range(0.1, 5.0) var reload_time: float = 1.1
 @export_range(0.0, 10.0) var recoil_degrees: float = 1.2
+@export_range(0.0, 2.0) var weapon_kick_scale: float = 1.0
 @export_range(0.0, 20.0) var spread_degrees: float = 1.0
 @export_range(0.1, 1.0) var aim_spread_multiplier: float = 0.35
 @export_range(1.0, 300.0) var weapon_range: float = 80.0
