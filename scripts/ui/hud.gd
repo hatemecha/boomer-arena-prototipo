@@ -116,6 +116,8 @@ var _last_crosshair_aiming: bool = false
 var _performance_profile: int = 0
 var _debug_label_refresh_interval: float = DEBUG_LABEL_REFRESH_INTERVAL
 var _base_hud_motion_enabled: bool = true
+var _base_hud_move_sway_px: float = 0.0
+var _base_hud_look_sway_px: float = 0.0
 const MAX_KILL_FEED_ENTRIES: int = 5
 const KILL_FEED_LIFETIME: float = 4.0
 
@@ -123,6 +125,8 @@ const KILL_FEED_LIFETIME: float = 4.0
 func _ready() -> void:
 	process_priority = 1
 	_base_hud_motion_enabled = hud_motion_enabled
+	_base_hud_move_sway_px = hud_move_sway_px
+	_base_hud_look_sway_px = hud_look_sway_px
 	_ensure_optional_labels()
 	_ensure_pickup_interaction_widgets()
 	_capture_hud_base_offsets()
@@ -182,13 +186,22 @@ func apply_performance_profile(profile: int) -> void:
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
 			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL_LOW
 			hud_motion_enabled = _base_hud_motion_enabled
+			hud_move_sway_px = _base_hud_move_sway_px * 0.45
+			hud_look_sway_px = _base_hud_look_sway_px * 0.45
+			set_debug_visible(false)
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
 			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL_ULTRA_LOW
 			hud_motion_enabled = false
+			hud_move_sway_px = 0.0
+			hud_look_sway_px = 0.0
+			set_debug_visible(false)
 		_:
 			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL
 			hud_motion_enabled = _base_hud_motion_enabled
+			hud_move_sway_px = _base_hud_move_sway_px
+			hud_look_sway_px = _base_hud_look_sway_px
 	_apply_lens_safe_layout(_visual_director.lens_preset if _visual_director != null else PSXVisualDirector.LensPreset.PSX_8MM)
+	_apply_music_panel_profile()
 	_apply_hud_motion()
 
 
@@ -295,6 +308,9 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 
 
 func _process(delta: float) -> void:
+	if not is_visible_in_tree():
+		return
+
 	_debug_refresh_timer += delta
 	if _debug_refresh_timer >= _debug_label_refresh_interval:
 		_debug_refresh_timer = 0.0
@@ -750,8 +766,9 @@ func _set_stats_base_offsets(left: float, top: float, right: float, bottom: floa
 
 func _update_hud_motion(delta: float) -> void:
 	if not hud_motion_enabled or _player == null:
-		_hud_motion_offset = Vector2.ZERO
-		_apply_hud_motion()
+		if _hud_motion_offset != Vector2.ZERO:
+			_hud_motion_offset = Vector2.ZERO
+			_apply_hud_motion()
 		return
 
 	var sample: Dictionary = _player.get_hud_motion_sample()
@@ -768,6 +785,11 @@ func _update_hud_motion(delta: float) -> void:
 	var smoothing_weight: float = 1.0 - exp(-hud_motion_smoothing * delta)
 	_hud_motion_offset = _hud_motion_offset.lerp(target_offset, smoothing_weight)
 	_apply_hud_motion()
+
+
+func _apply_music_panel_profile() -> void:
+	if music_cover != null:
+		music_cover.visible = _performance_profile != PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW
 
 
 func _capture_hud_base_offsets() -> void:

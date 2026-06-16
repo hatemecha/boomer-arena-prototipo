@@ -2,6 +2,8 @@ class_name PlayerController
 extends CharacterBody3D
 
 const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+const PlayerWeaponMotionScript: GDScript = preload("res://scripts/player/player_weapon_motion.gd")
+const PlayerBodyVisualScript: GDScript = preload("res://scripts/player/player_body_visual.gd")
 
 enum DebugCameraMode {
 	FIRST_PERSON,
@@ -191,23 +193,14 @@ var _last_wall_contact_time: float = -999.0
 var _last_wall_jump_normal: Vector3 = Vector3.ZERO
 var _has_left_wall_since_last_jump: bool = true
 var _wall_jump_camera_kick_offset: Vector3 = Vector3.ZERO
-var _weapon_sway_position: Vector3 = Vector3.ZERO
-var _weapon_sway_rotation: Vector3 = Vector3.ZERO
-var _previous_yaw: float = 0.0
-var _previous_pitch: float = 0.0
-var _weapon_velocity_sway: Vector3 = Vector3.ZERO
+var _weapon_motion = PlayerWeaponMotionScript.new()
 var _last_view_delta: Vector2 = Vector2.ZERO
 var _hud_motion_strafe: float = 0.0
 var _hud_motion_forward: float = 0.0
 var _hud_motion_look: Vector2 = Vector2.ZERO
 var _prev_hud_sample_yaw: float = 0.0
 var _prev_hud_sample_pitch: float = 0.0
-var _body_motion_time: float = 0.0
-var _body_visual_default_transform: Transform3D = Transform3D.IDENTITY
-var _third_person_weapon_default_transform: Transform3D = Transform3D.IDENTITY
-var _third_person_weapon_models: Array[Node3D] = []
-var _limb_bone_indices: Dictionary = {}
-var _limb_rest_rotations: Dictionary = {}
+var _body_visual_controller = PlayerBodyVisualScript.new()
 var _debug_camera_mode: DebugCameraMode = DebugCameraMode.FIRST_PERSON
 var _third_back_pcam: PhantomCamera3D
 var _third_front_pcam: PhantomCamera3D
@@ -218,6 +211,23 @@ var _kill_cam_active: bool = false
 var respawn_generation: int = 0
 var _third_person_camera_initialized: bool = false
 var _third_person_camera_position: Vector3 = Vector3.ZERO
+var _motion_defaults_cached: bool = false
+var _default_camera_motion_enabled: bool = true
+var _default_weapon_motion_enabled: bool = true
+var _default_idle_breath_amount: float = 0.0
+var _default_walk_bob_amount: float = 0.0
+var _default_run_bob_amount: float = 0.0
+var _default_camera_roll_amount: float = 0.0
+var _default_camera_strafe_pitch_amount: float = 0.0
+var _default_camera_strafe_yaw_amount: float = 0.0
+var _default_camera_look_inertia: float = 0.0
+var _default_landing_camera_dip: float = 0.0
+var _default_wall_jump_camera_kick: float = 0.0
+var _default_weapon_sway_amount: float = 0.0
+var _default_weapon_rotation_sway_amount: float = 0.0
+var _default_weapon_movement_sway_amount: float = 0.0
+var _default_weapon_jump_drop: float = 0.0
+var _default_weapon_landing_kick: float = 0.0
 
 
 #region Ciclo de vida e input
@@ -225,16 +235,15 @@ func _ready() -> void:
 	DefaultInputActions.ensure_default_actions()
 	camera.fov = fov
 	_cache_standing_pose()
-	_cache_third_person_weapon_rig()
-	_cache_limb_bones()
+	_cache_motion_defaults()
+	_body_visual_controller.setup(self)
 	_collect_weapons()
 	_set_active_weapon(0)
 	_update_body_visibility()
 	_update_first_person_weapon_visibility()
 	_update_third_person_weapon_visibility()
 	health.died.connect(_on_health_died)
-	_previous_yaw = rotation.y
-	_previous_pitch = _pitch_degrees
+	_weapon_motion.reset(rotation.y, _pitch_degrees)
 	_previous_camera_yaw = rotation.y
 	_prev_hud_sample_yaw = rotation.y
 	_prev_hud_sample_pitch = _pitch_degrees
@@ -327,6 +336,10 @@ func is_local_controlled() -> bool:
 	return _is_locally_controlled()
 
 
+func is_debug_first_person_view() -> bool:
+	return _is_debug_first_person_view()
+
+
 func is_alive() -> bool:
 	return not _is_dead
 
@@ -343,6 +356,7 @@ func set_pickup_interaction(prompt: String, progress: float, is_visible: bool, c
 
 func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
+	_apply_visual_motion_profile(safe_profile)
 	for weapon_node in _weapons:
 		if weapon_node == null:
 			continue
@@ -351,6 +365,84 @@ func apply_performance_profile(profile: int) -> void:
 		var muzzle_flash: Node = weapon_node.get_node_or_null("MuzzleFlash")
 		if muzzle_flash != null and muzzle_flash.has_method("apply_performance_profile"):
 			muzzle_flash.apply_performance_profile(safe_profile)
+
+
+func _apply_visual_motion_profile(profile: int) -> void:
+	_cache_motion_defaults()
+	match profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			_restore_visual_motion_defaults()
+			_scale_camera_motion(0.62)
+			_scale_weapon_motion(0.58)
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			_restore_visual_motion_defaults()
+			_scale_camera_motion(0.22)
+			_scale_weapon_motion(0.18)
+		_:
+			_restore_visual_motion_defaults()
+
+
+func _cache_motion_defaults() -> void:
+	if _motion_defaults_cached:
+		return
+	_default_camera_motion_enabled = camera_motion_enabled
+	_default_weapon_motion_enabled = weapon_motion_enabled
+	_default_idle_breath_amount = idle_breath_amount
+	_default_walk_bob_amount = walk_bob_amount
+	_default_run_bob_amount = run_bob_amount
+	_default_camera_roll_amount = camera_roll_amount
+	_default_camera_strafe_pitch_amount = camera_strafe_pitch_amount
+	_default_camera_strafe_yaw_amount = camera_strafe_yaw_amount
+	_default_camera_look_inertia = camera_look_inertia
+	_default_landing_camera_dip = landing_camera_dip
+	_default_wall_jump_camera_kick = wall_jump_camera_kick
+	_default_weapon_sway_amount = weapon_sway_amount
+	_default_weapon_rotation_sway_amount = weapon_rotation_sway_amount
+	_default_weapon_movement_sway_amount = weapon_movement_sway_amount
+	_default_weapon_jump_drop = weapon_jump_drop
+	_default_weapon_landing_kick = weapon_landing_kick
+	_motion_defaults_cached = true
+
+
+func _restore_visual_motion_defaults() -> void:
+	camera_motion_enabled = _default_camera_motion_enabled
+	weapon_motion_enabled = _default_weapon_motion_enabled
+	idle_breath_amount = _default_idle_breath_amount
+	walk_bob_amount = _default_walk_bob_amount
+	run_bob_amount = _default_run_bob_amount
+	camera_roll_amount = _default_camera_roll_amount
+	camera_strafe_pitch_amount = _default_camera_strafe_pitch_amount
+	camera_strafe_yaw_amount = _default_camera_strafe_yaw_amount
+	camera_look_inertia = _default_camera_look_inertia
+	landing_camera_dip = _default_landing_camera_dip
+	wall_jump_camera_kick = _default_wall_jump_camera_kick
+	weapon_sway_amount = _default_weapon_sway_amount
+	weapon_rotation_sway_amount = _default_weapon_rotation_sway_amount
+	weapon_movement_sway_amount = _default_weapon_movement_sway_amount
+	weapon_jump_drop = _default_weapon_jump_drop
+	weapon_landing_kick = _default_weapon_landing_kick
+
+
+func _scale_camera_motion(scale: float) -> void:
+	camera_motion_enabled = _default_camera_motion_enabled
+	idle_breath_amount = _default_idle_breath_amount * scale
+	walk_bob_amount = _default_walk_bob_amount * scale
+	run_bob_amount = _default_run_bob_amount * scale
+	camera_roll_amount = _default_camera_roll_amount * scale
+	camera_strafe_pitch_amount = _default_camera_strafe_pitch_amount * scale
+	camera_strafe_yaw_amount = _default_camera_strafe_yaw_amount * scale
+	camera_look_inertia = _default_camera_look_inertia * scale
+	landing_camera_dip = _default_landing_camera_dip * scale
+	wall_jump_camera_kick = _default_wall_jump_camera_kick * scale
+
+
+func _scale_weapon_motion(scale: float) -> void:
+	weapon_motion_enabled = _default_weapon_motion_enabled
+	weapon_sway_amount = _default_weapon_sway_amount * scale
+	weapon_rotation_sway_amount = _default_weapon_rotation_sway_amount * scale
+	weapon_movement_sway_amount = _default_weapon_movement_sway_amount * scale
+	weapon_jump_drop = _default_weapon_jump_drop * scale
+	weapon_landing_kick = _default_weapon_landing_kick * scale
 
 
 func warmup_gameplay_resources(scene_root: Node, bullet_pool_size: int = 8, decal_pool_size: int = 8) -> void:
@@ -430,11 +522,8 @@ func respawn_at(spawn_position: Vector3, yaw_radians: float = 0.0) -> void:
 	_last_wall_jump_normal = Vector3.ZERO
 	_has_left_wall_since_last_jump = true
 	_wall_jump_camera_kick_offset = Vector3.ZERO
-	_weapon_sway_position = Vector3.ZERO
-	_weapon_sway_rotation = Vector3.ZERO
-	_weapon_velocity_sway = Vector3.ZERO
-	_previous_yaw = rotation.y
-	_previous_pitch = _pitch_degrees
+	_weapon_motion.reset(rotation.y, _pitch_degrees)
+	_body_visual_controller.reset_motion()
 	_previous_camera_yaw = rotation.y
 	_breath_time = 0.0
 	_bob_blend = 0.0
@@ -620,7 +709,7 @@ func set_body_color(color: Color) -> void:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.albedo_color = color
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	_apply_body_material(body_visual if body_visual != null else body_mesh, material)
+	_body_visual_controller.apply_body_material(body_visual if body_visual != null else body_mesh, material)
 
 
 func _on_performance_profile_changed(profile: int) -> void:
@@ -1270,43 +1359,6 @@ func _collect_weapons() -> void:
 			_weapon_default_transforms[child] = child.transform
 
 
-func _cache_third_person_weapon_rig() -> void:
-	if body_visual != null:
-		_body_visual_default_transform = body_visual.transform
-
-	_third_person_weapon_models.clear()
-	if third_person_weapon_rig == null:
-		return
-
-	_third_person_weapon_default_transform = third_person_weapon_rig.transform
-	for child in third_person_weapon_rig.get_children():
-		if child is Node3D:
-			_third_person_weapon_models.append(child)
-
-
-func _cache_limb_bones() -> void:
-	_limb_bone_indices.clear()
-	_limb_rest_rotations.clear()
-	if character_skeleton == null:
-		return
-
-	var bone_names: Dictionary = {
-		"left_upper": "Bone.003.L_41",
-		"left_lower": "Bone.004.L_40",
-		"left_foot": "Bone.005.L_39",
-		"right_upper": "Bone.003.R_44",
-		"right_lower": "Bone.004.R_43",
-		"right_foot": "Bone.005.R_42",
-	}
-
-	for limb_name in bone_names.keys():
-		var bone_index: int = character_skeleton.find_bone(String(bone_names[limb_name]))
-		if bone_index < 0:
-			continue
-		_limb_bone_indices[limb_name] = bone_index
-		_limb_rest_rotations[limb_name] = character_skeleton.get_bone_pose_rotation(bone_index)
-
-
 func _cache_standing_pose() -> void:
 	if camera_pivot != null:
 		_standing_camera_pivot_position = camera_pivot.position
@@ -1332,151 +1384,23 @@ func _cache_standing_pose() -> void:
 
 #region Visual de cuerpo en tercera persona
 func _update_body_visibility() -> void:
-	if body_mesh == null:
-		return
-	if _is_dead:
-		body_mesh.visible = false
-		_update_third_person_weapon_visibility()
-		return
-	var hide_body: bool = hide_body_for_local_player and _is_locally_controlled() and _is_debug_first_person_view()
-	body_mesh.visible = not hide_body
-	_update_third_person_weapon_visibility()
+	_body_visual_controller.update_body_visibility(self)
 
 
 func _update_first_person_weapon_visibility() -> void:
-	if _viewmodel_fill_light != null:
-		_viewmodel_fill_light.visible = _is_locally_controlled() and _is_debug_first_person_view()
-
-	for weapon_index in range(_weapons.size()):
-		_weapons[weapon_index].visible = (
-			_is_locally_controlled()
-			and _is_debug_first_person_view()
-			and weapon_index == _active_weapon_index
-		)
+	_body_visual_controller.update_first_person_weapon_visibility(self, _weapons, _active_weapon_index, _viewmodel_fill_light)
 
 
 func _update_third_person_weapon_visibility() -> void:
-	if third_person_weapon_rig == null:
-		return
-
-	var should_show_rig: bool = not _is_dead
-	if _is_locally_controlled():
-		if _is_debug_first_person_view() and hide_third_person_weapon_for_local_player:
-			should_show_rig = false
-	third_person_weapon_rig.visible = should_show_rig
-
-	for weapon_index in range(_third_person_weapon_models.size()):
-		_third_person_weapon_models[weapon_index].visible = should_show_rig and weapon_index == _active_weapon_index
+	_body_visual_controller.update_third_person_weapon_visibility(self)
 
 
 func _should_update_third_person_visual() -> bool:
-	if not _is_locally_controlled():
-		return true
-	if not _is_debug_first_person_view():
-		return true
-
-	var body_visible: bool = body_mesh != null and body_mesh.visible
-	var weapon_rig_visible: bool = third_person_weapon_rig != null and third_person_weapon_rig.visible
-	return body_visible or weapon_rig_visible
+	return _body_visual_controller.should_update_third_person_visual(self)
 
 
 func _update_third_person_visual(delta: float) -> void:
-	var horizontal_speed: float = Vector2(velocity.x, velocity.z).length()
-	var speed_ratio: float = clampf(horizontal_speed / maxf(run_speed, 0.001), 0.0, 1.0)
-	var stride_frequency: float = lerpf(body_breath_frequency, 6.0, speed_ratio)
-	_body_motion_time += delta * stride_frequency
-
-	var breath_wave: float = sin(_body_motion_time * TAU)
-	var walk_wave: float = sin(_body_motion_time * TAU * 1.35)
-	var lateral_wave: float = cos(_body_motion_time * TAU * 0.675)
-	var body_offset := Vector3(0.0, breath_wave * body_breath_amount, 0.0)
-	body_offset.y += absf(walk_wave) * body_walk_bob_amount * speed_ratio
-
-	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
-	var strafe_ratio: float = clampf(local_velocity.x / maxf(run_speed, 0.001), -1.0, 1.0)
-	var forward_ratio: float = clampf(-local_velocity.z / maxf(run_speed, 0.001), -1.0, 1.0)
-	var body_rotation := Vector3(
-		deg_to_rad(forward_ratio * body_walk_roll_degrees * 0.35 * speed_ratio),
-		0.0,
-		deg_to_rad((-strafe_ratio * body_walk_roll_degrees) + lateral_wave * body_walk_roll_degrees * 0.18 * speed_ratio)
-	)
-	_update_limb_animation(speed_ratio, walk_wave)
-
-	if body_visual != null:
-		body_visual.transform = Transform3D(
-			_body_visual_default_transform.basis * Basis.from_euler(body_rotation),
-			_body_visual_default_transform.origin + body_offset
-		)
-
-	if third_person_weapon_rig == null:
-		return
-
-	var pitch_radians: float = deg_to_rad(clampf(_pitch_degrees, -55.0, 55.0))
-	var aim_blend: float = 1.0 if _is_aiming else 0.0
-	var rig_offset := Vector3(
-		lerpf(0.0, -third_person_aim_offset * 0.25, aim_blend),
-		body_offset.y * 0.35 + lerpf(0.0, third_person_aim_offset * 0.15, aim_blend),
-		lerpf(0.0, -third_person_aim_offset, aim_blend)
-	)
-	var rig_sway := Vector3(
-		pitch_radians * 0.65,
-		deg_to_rad(strafe_ratio * 4.0 * speed_ratio),
-		deg_to_rad(-strafe_ratio * 5.0 * speed_ratio)
-	)
-	third_person_weapon_rig.transform = Transform3D(
-		_third_person_weapon_default_transform.basis * Basis.from_euler(rig_sway),
-		_third_person_weapon_default_transform.origin + rig_offset
-	)
-
-
-func _update_limb_animation(speed_ratio: float, walk_wave: float) -> void:
-	if character_skeleton == null or _limb_bone_indices.is_empty():
-		return
-
-	var jump_tuck: float = clampf(absf(velocity.y) / maxf(jump_velocity, 0.001), 0.0, 1.0)
-	if is_on_floor():
-		jump_tuck = 0.0
-	var swing: float = deg_to_rad(leg_swing_degrees) * speed_ratio
-	var tuck: float = deg_to_rad(leg_jump_tuck_degrees) * jump_tuck
-	var left_angle: float = walk_wave * swing + tuck
-	var right_angle: float = -walk_wave * swing + tuck
-
-	_apply_limb_pose("left_upper", Vector3.RIGHT, left_angle)
-	_apply_limb_pose("right_upper", Vector3.RIGHT, right_angle)
-	_apply_limb_pose("left_lower", Vector3.RIGHT, -left_angle * 0.45 - tuck * 0.25)
-	_apply_limb_pose("right_lower", Vector3.RIGHT, -right_angle * 0.45 - tuck * 0.25)
-	_apply_limb_pose("left_foot", Vector3.RIGHT, -left_angle * 0.25)
-	_apply_limb_pose("right_foot", Vector3.RIGHT, -right_angle * 0.25)
-
-
-func _apply_limb_pose(limb_name: String, axis: Vector3, angle: float) -> void:
-	if not _limb_bone_indices.has(limb_name) or not _limb_rest_rotations.has(limb_name):
-		return
-
-	var bone_index: int = int(_limb_bone_indices[limb_name])
-	var rest_rotation: Quaternion = _limb_rest_rotations[limb_name] as Quaternion
-	character_skeleton.set_bone_pose_rotation(bone_index, rest_rotation * Quaternion(axis, angle))
-
-
-func _apply_body_material(node: Node, material: Material) -> void:
-	if node is MeshInstance3D:
-		var mesh_instance: MeshInstance3D = node as MeshInstance3D
-		if _should_tint_body_mesh(mesh_instance):
-			mesh_instance.material_override = material
-	for child in node.get_children():
-		_apply_body_material(child, material)
-
-
-func _should_tint_body_mesh(mesh_instance: MeshInstance3D) -> bool:
-	var mesh: Mesh = mesh_instance.mesh
-	if mesh == null:
-		return true
-
-	for surface_index in range(mesh.get_surface_count()):
-		var surface_material: Material = mesh.surface_get_material(surface_index)
-		if surface_material != null and surface_material.resource_name.begins_with("Material"):
-			return false
-	return true
+	_body_visual_controller.update_third_person_visual(self, delta)
 #endregion
 
 
@@ -1492,11 +1416,7 @@ func _set_active_weapon(index: int) -> void:
 			weapon.transform = _weapon_default_transforms[weapon]
 
 	_aim_blend = 0.0
-	_weapon_sway_position = Vector3.ZERO
-	_weapon_sway_rotation = Vector3.ZERO
-	_weapon_velocity_sway = Vector3.ZERO
-	_previous_yaw = rotation.y
-	_previous_pitch = _pitch_degrees
+	_weapon_motion.reset(rotation.y, _pitch_degrees)
 	_previous_camera_yaw = rotation.y
 	_active_weapon_index = index
 	weapon = _weapons[index]
@@ -1525,88 +1445,8 @@ func _update_aim_state(delta: float) -> void:
 	var default_transform: Transform3D = _weapon_default_transforms.get(weapon, weapon.transform)
 	var aim_transform: Transform3D = _build_aim_transform(weapon, default_transform)
 	var base_transform: Transform3D = default_transform.interpolate_with(aim_transform, _aim_blend)
-	var motion_transform: Transform3D = _calculate_weapon_motion(delta, base_transform)
-	weapon.transform = _align_weapon_muzzle_lateral_to_crosshair(motion_transform, weapon)
-
-
-func _calculate_weapon_motion(delta: float, base_transform: Transform3D) -> Transform3D:
-	var smoothing_weight: float = 1.0 - exp(-weapon_sway_smoothing * delta)
-	var yaw_delta_degrees: float = rad_to_deg(wrapf(rotation.y - _previous_yaw, -PI, PI))
-	var pitch_delta_degrees: float = _pitch_degrees - _previous_pitch
-	_previous_yaw = rotation.y
-	_previous_pitch = _pitch_degrees
-
-	var local_velocity: Vector3 = global_transform.basis.inverse() * velocity
-	_weapon_velocity_sway = _weapon_velocity_sway.lerp(local_velocity, smoothing_weight)
-
-	var target_position := Vector3.ZERO
-	var target_rotation := Vector3.ZERO
-	var reload_motion_damp: float = 0.12 if weapon != null and weapon.is_reloading() else 1.0
-	if weapon_motion_enabled and _gameplay_input_enabled and not _is_dead:
-		var max_speed: float = maxf(run_speed, 0.001)
-		var motion_blend: float = lerpf(0.72, 1.0, _bob_blend)
-		var strafe_factor: float = clampf(_weapon_velocity_sway.x / max_speed, -1.0, 1.0) * motion_blend
-		var forward_factor: float = clampf(-_weapon_velocity_sway.z / max_speed, -1.0, 1.0) * motion_blend
-		var vertical_factor: float = clampf(absf(velocity.y) / maxf(jump_velocity, 0.001), 0.0, 1.0)
-		var motion_scale: float = _get_weapon_motion_scale()
-
-		target_position.x += -strafe_factor * weapon_movement_sway_amount
-		target_position.z += forward_factor * weapon_movement_sway_amount * (0.9 if forward_factor >= 0.0 else 0.55)
-		target_position.x += yaw_delta_degrees * weapon_sway_amount * 0.032
-		target_position.y += pitch_delta_degrees * weapon_sway_amount * 0.022
-		if forward_factor >= 0.0:
-			target_position.y -= forward_factor * weapon_movement_sway_amount * 0.55
-		else:
-			target_position.y += -forward_factor * weapon_movement_sway_amount * 0.35
-		if not is_on_floor():
-			target_position.y -= weapon_jump_drop * vertical_factor
-		if landing_camera_dip > 0.0 and _landing_offset > 0.0:
-			target_position.y -= weapon_landing_kick * clampf(_landing_offset / landing_camera_dip, 0.0, 1.0)
-
-		target_rotation.x += pitch_delta_degrees * weapon_rotation_sway_amount * 0.34
-		target_rotation.y += -yaw_delta_degrees * weapon_rotation_sway_amount * 0.38
-		target_rotation.z += yaw_delta_degrees * weapon_rotation_sway_amount * 0.55
-		target_rotation.z += -strafe_factor * weapon_rotation_sway_amount * 1.2
-		target_rotation.x += forward_factor * weapon_rotation_sway_amount * 0.48
-
-		target_position *= motion_scale * reload_motion_damp
-		target_rotation *= motion_scale * reload_motion_damp
-		var max_weapon_offset: float = lerpf(0.3, 0.2, _aim_blend)
-		if target_position.length() > max_weapon_offset:
-			target_position = target_position.normalized() * max_weapon_offset
-		target_rotation.x = clampf(target_rotation.x, -0.32, 0.32)
-		target_rotation.y = clampf(target_rotation.y, -0.28, 0.28)
-		target_rotation.z = clampf(target_rotation.z, -0.34, 0.34)
-
-	_weapon_sway_position = _weapon_sway_position.lerp(target_position, smoothing_weight)
-	_weapon_sway_rotation = _weapon_sway_rotation.lerp(target_rotation, smoothing_weight)
-
-	var motion_basis: Basis = base_transform.basis * Basis.from_euler(_weapon_sway_rotation)
-	var motion_origin: Vector3 = base_transform.origin + base_transform.basis * _weapon_sway_position
-
-	if weapon != null:
-		motion_origin += base_transform.basis * weapon.reload_anim_position
-		var reload_rotation_radians := Vector3(
-			deg_to_rad(weapon.reload_anim_rotation.x),
-			deg_to_rad(weapon.reload_anim_rotation.y),
-			deg_to_rad(weapon.reload_anim_rotation.z)
-		)
-		motion_basis = motion_basis * Basis.from_euler(reload_rotation_radians)
-
-	return Transform3D(motion_basis, motion_origin)
-
-
-func _get_weapon_motion_scale() -> float:
-	var motion_scale: float = 1.0
-	if _should_use_run_fov():
-		motion_scale *= weapon_run_sway_multiplier
-	if _is_crouching:
-		motion_scale *= weapon_crouch_sway_multiplier
-
-	var aim_scale: float = weapon_aim_sway_multiplier
-	if _is_aiming and _get_horizontal_speed() > 0.35:
-		aim_scale = maxf(aim_scale, weapon_aim_move_sway_multiplier)
-	return lerpf(motion_scale, aim_scale, _aim_blend)
+	var motion_transform: Transform3D = _weapon_motion.apply_motion(self, weapon, base_transform, delta)
+	weapon.transform = _weapon_motion.align_muzzle_lateral_to_crosshair(self, motion_transform, weapon)
 
 
 func _should_use_run_fov() -> bool:
@@ -1634,24 +1474,6 @@ func _build_aim_transform(active_weapon: WeaponBase, default_transform: Transfor
 	return Transform3D(aim_basis, aim_origin)
 
 
-func _align_weapon_muzzle_lateral_to_crosshair(base_transform: Transform3D, active_weapon: WeaponBase) -> Transform3D:
-	if active_weapon == null:
-		return base_transform
-
-	var muzzle: Node3D = active_weapon.get_node_or_null("MuzzleFlash") as Node3D
-	if muzzle == null:
-		return base_transform
-
-	var muzzle_camera_local: Vector3 = base_transform * muzzle.transform.origin
-	var corrected_origin: Vector3 = base_transform.origin
-	corrected_origin.x += weapon_crosshair_lateral_offset - muzzle_camera_local.x
-	var aligned_transform := Transform3D(base_transform.basis, corrected_origin)
-
-	if weapon_hold_mode == WeaponHoldMode.DOOM or align_weapon_muzzle_to_crosshair:
-		return aligned_transform
-
-	# Default: agarre lateral en reposo, alineación centrada al apuntar (click derecho).
-	return base_transform.interpolate_with(aligned_transform, _aim_blend)
 #endregion
 
 

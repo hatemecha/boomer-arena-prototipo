@@ -1,6 +1,8 @@
 class_name PSXVisualDirector
 extends Node
 
+const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+
 enum TimeOfDayPreset {
 	MORNING,
 	AFTERNOON,
@@ -100,17 +102,18 @@ func cycle_time_of_day_preset() -> void:
 	refresh_visual_style()
 
 
-func apply_lens_preset(preset: LensPreset) -> void:
+func apply_lens_preset(preset: LensPreset, should_refresh: bool = true) -> void:
 	var safe_preset: int = clampi(int(preset), 0, LensPreset.size() - 1)
 	if int(lens_preset) == safe_preset:
 		return
 	lens_preset = safe_preset as LensPreset
 	_apply_lens_preset_values(lens_preset)
-	refresh_visual_style()
+	if should_refresh:
+		refresh_visual_style()
 	lens_preset_changed.emit(lens_preset)
 
 
-func apply_performance_profile(profile: int) -> void:
+func apply_performance_profile(profile: int, should_refresh: bool = true) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	if _performance_profile == safe_profile:
 		return
@@ -119,7 +122,8 @@ func apply_performance_profile(profile: int) -> void:
 	_use_fast_post_process = _performance_profile != 0
 	glow_enabled = _base_glow_enabled and _performance_profile == 0
 	_sync_post_process_shader()
-	refresh_visual_style()
+	if should_refresh:
+		refresh_visual_style()
 
 
 func refresh_visual_style() -> void:
@@ -141,6 +145,7 @@ func refresh_visual_style() -> void:
 
 func invalidate_scene_cache() -> void:
 	_scene_cache_valid = false
+	_nearest_filtering_applied = false
 
 
 func set_music_tint_override(color: Color, strength: float) -> void:
@@ -498,6 +503,46 @@ func _get_viewport_aspect_ratio() -> float:
 	return viewport_size.x / viewport_size.y
 
 
+func _get_primary_light_energy_scale() -> float:
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			return 0.72
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			return 0.42
+		_:
+			return 1.0
+
+
+func _get_primary_light_range_scale() -> float:
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			return 0.82
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			return 0.58
+		_:
+			return 1.0
+
+
+func _get_fill_light_energy_scale() -> float:
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			return 0.45
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			return 0.0
+		_:
+			return 1.0
+
+
+func _get_fill_light_range_scale() -> float:
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			return 0.68
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			return 0.0
+		_:
+			return 1.0
+
+
 func _configure_exterior_light() -> void:
 	if _cached_exterior_light == null:
 		return
@@ -524,6 +569,7 @@ func _configure_arena_lights() -> void:
 		if arena_light == null or not is_instance_valid(arena_light):
 			continue
 		arena_light.shadow_enabled = false
+		arena_light.visible = true
 		match time_of_day_preset:
 			TimeOfDayPreset.MORNING:
 				arena_light.light_color = Color(0.72, 0.84, 1.0)
@@ -537,6 +583,8 @@ func _configure_arena_lights() -> void:
 				arena_light.light_color = Color(0.52, 0.82, 0.92)
 				arena_light.light_energy = 2.85
 				arena_light.omni_range = 26.0
+		arena_light.light_energy *= _get_primary_light_energy_scale()
+		arena_light.omni_range *= _get_primary_light_range_scale()
 
 
 func _configure_aisle_fill_lights() -> void:
@@ -544,6 +592,7 @@ func _configure_aisle_fill_lights() -> void:
 		if aisle_light == null or not is_instance_valid(aisle_light):
 			continue
 		aisle_light.shadow_enabled = false
+		aisle_light.visible = _performance_profile != PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW
 		match time_of_day_preset:
 			TimeOfDayPreset.MORNING:
 				aisle_light.light_color = Color(0.68, 0.76, 0.88)
@@ -557,6 +606,8 @@ func _configure_aisle_fill_lights() -> void:
 				aisle_light.light_color = Color(0.5, 0.72, 0.82)
 				aisle_light.light_energy = 1.9
 				aisle_light.omni_range = 20.0
+		aisle_light.light_energy *= _get_fill_light_energy_scale()
+		aisle_light.omni_range *= _get_fill_light_range_scale()
 
 
 func _configure_window_fill_lights() -> void:
@@ -564,6 +615,7 @@ func _configure_window_fill_lights() -> void:
 		if fill_light == null or not is_instance_valid(fill_light):
 			continue
 		fill_light.shadow_enabled = false
+		fill_light.visible = _performance_profile != PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW
 		match time_of_day_preset:
 			TimeOfDayPreset.MORNING:
 				fill_light.light_color = Color(0.72, 0.82, 1.0)
@@ -577,6 +629,8 @@ func _configure_window_fill_lights() -> void:
 				fill_light.light_color = Color(0.48, 0.6, 0.9)
 				fill_light.light_energy = 1.45
 				fill_light.omni_range = 18.0
+		fill_light.light_energy *= _get_fill_light_energy_scale()
+		fill_light.omni_range *= _get_fill_light_range_scale()
 
 
 func _configure_sky_portals() -> void:
@@ -650,7 +704,18 @@ func _configure_light_panel_material(material: Material) -> void:
 			TimeOfDayPreset.NIGHT:
 				base_material.emission = Color(0.52, 0.82, 0.94)
 				base_material.emission_energy_multiplier = 2.65 if glow_enabled else 1.55
+		base_material.emission_energy_multiplier *= _get_light_panel_emission_scale()
 		base_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+
+
+func _get_light_panel_emission_scale() -> float:
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			return 0.62
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			return 0.35
+		_:
+			return 1.0
 
 
 func _ensure_unique_sky_material(sky_portal: MeshInstance3D) -> ShaderMaterial:

@@ -117,18 +117,19 @@ func apply_to_visual_director(visual_director: PSXVisualDirector) -> void:
 		return
 
 	var next_post_process_enabled: bool = true if is_low_power_profile() else psx_filter_enabled
+	var next_lens_preset: int = get_effective_lens_preset()
 	var needs_refresh: bool = (
 		visual_director.post_process_enabled != next_post_process_enabled
 		or int(visual_director.time_of_day_preset) != time_of_day_preset
 	)
-	var lens_changed: bool = int(visual_director.lens_preset) != lens_preset
+	var lens_changed: bool = int(visual_director.lens_preset) != next_lens_preset
 	var performance_changed: bool = int(visual_director.get("_performance_profile")) != int(performance_profile)
 
 	visual_director.post_process_enabled = next_post_process_enabled
 	visual_director.time_of_day_preset = time_of_day_preset
-	visual_director.apply_lens_preset(lens_preset as PSXVisualDirector.LensPreset)
-	visual_director.apply_performance_profile(int(performance_profile))
-	if needs_refresh and not lens_changed and not performance_changed:
+	visual_director.apply_performance_profile(int(performance_profile), false)
+	visual_director.apply_lens_preset(next_lens_preset as PSXVisualDirector.LensPreset, false)
+	if needs_refresh or lens_changed or performance_changed:
 		visual_director.refresh_visual_style()
 
 
@@ -150,6 +151,17 @@ func get_internal_resolution() -> Vector2i:
 	if performance_profile == PerformanceProfile.ULTRA_LOW:
 		return ULTRA_LOW_INTERNAL_RESOLUTION
 	return DEFAULT_INTERNAL_RESOLUTION
+
+
+func get_effective_lens_preset() -> int:
+	var safe_lens: int = clampi(lens_preset, 0, PSXVisualDirector.LensPreset.size() - 1)
+	match performance_profile:
+		PerformanceProfile.LOW:
+			return mini(safe_lens, PSXVisualDirector.LensPreset.GAMEPLAY)
+		PerformanceProfile.ULTRA_LOW:
+			return PSXVisualDirector.LensPreset.OFF
+		_:
+			return safe_lens
 
 
 func get_effective_fps_cap() -> int:

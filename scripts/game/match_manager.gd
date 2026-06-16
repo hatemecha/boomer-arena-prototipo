@@ -24,6 +24,10 @@ var time_remaining: float = 0.0
 var _player_names: Dictionary = {}
 
 
+func _ready() -> void:
+	set_process(false)
+
+
 func _process(delta: float) -> void:
 	if not match_running or win_mode != WinMode.TIME_LIMIT:
 		return
@@ -56,6 +60,7 @@ func apply_rules_snapshot(snapshot: Dictionary) -> void:
 	score_limit = int(snapshot.get("score_limit", score_limit))
 	time_limit_seconds = float(snapshot.get("time_limit_seconds", time_limit_seconds))
 	time_remaining = float(snapshot.get("time_remaining", time_limit_seconds))
+	set_process(match_running and win_mode == WinMode.TIME_LIMIT)
 	time_changed.emit(time_remaining)
 
 
@@ -73,6 +78,7 @@ func start_match() -> void:
 	match_running = true
 	scores.clear()
 	time_remaining = time_limit_seconds
+	set_process(win_mode == WinMode.TIME_LIMIT)
 	match_started.emit()
 	time_changed.emit(time_remaining)
 
@@ -139,6 +145,7 @@ func get_score_snapshot() -> Dictionary:
 func apply_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
 	scores.clear()
 	match_running = is_match_running
+	set_process(match_running and win_mode == WinMode.TIME_LIMIT)
 
 	for raw_player_id in snapshot.keys():
 		var player_id: int = int(raw_player_id)
@@ -156,6 +163,7 @@ func apply_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
 
 func apply_match_finished(winner_id: int) -> void:
 	match_running = false
+	set_process(false)
 	match_finished.emit(winner_id)
 
 
@@ -209,6 +217,7 @@ func get_objective_text() -> String:
 
 func _finish_match(winner_id: int) -> void:
 	match_running = false
+	set_process(false)
 	match_finished.emit(winner_id)
 
 

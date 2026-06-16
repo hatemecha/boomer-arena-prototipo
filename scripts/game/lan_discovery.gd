@@ -26,6 +26,7 @@ func _ready() -> void:
 	_listen_udp = PacketPeerUDP.new()
 	_send_udp = PacketPeerUDP.new()
 	_send_udp.set_broadcast_enabled(true)
+	set_process(false)
 
 
 func _exit_tree() -> void:
@@ -33,6 +34,7 @@ func _exit_tree() -> void:
 
 
 func start_hosting(payload: Dictionary) -> bool:
+	set_process(true)
 	_is_hosting = true
 	_is_browsing = false
 	_host_payload = payload.duplicate(true)
@@ -41,12 +43,15 @@ func start_hosting(payload: Dictionary) -> bool:
 	_close_listen_socket()
 	if not _ensure_send_bound():
 		push_warning("LAN discovery could not open send socket for hosting.")
+		_is_hosting = false
+		set_process(false)
 		return false
 	_send_broadcast()
 	return true
 
 
 func start_browsing() -> bool:
+	set_process(true)
 	if _is_browsing and _listen_udp != null and _listen_udp.is_bound():
 		return true
 
@@ -63,6 +68,7 @@ func start_browsing() -> bool:
 	if not _ensure_listen_bound():
 		push_warning("LAN discovery could not bind port %d for browsing." % DISCOVERY_PORT)
 		_is_browsing = false
+		set_process(false)
 		return false
 	if _sessions.is_empty():
 		session_list_changed.emit([])
@@ -81,6 +87,7 @@ func stop_all() -> void:
 		_remove_loopback_session()
 	_is_hosting = false
 	_is_browsing = false
+	set_process(false)
 	_host_payload.clear()
 	_host_session_id = ""
 	_close_listen_socket()

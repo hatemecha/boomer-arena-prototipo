@@ -3,17 +3,8 @@ extends Node3D
 
 const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const ArenaMenuCameraScript: GDScript = preload("res://scripts/ui/arena_menu_camera.gd")
-const FloorSnapScript: GDScript = preload("res://scripts/game/floor_snap.gd")
-const MAP_TEST_ARENA: String = "test_arena"
-const MAP_DOOM_E1M1: String = "doom_e1m1"
-const MAP_SCENES: Dictionary = {
-	MAP_DOOM_E1M1: preload("res://scenes/maps/IronHangarArena.tscn"),
-	MAP_TEST_ARENA: preload("res://scenes/maps/TestArena.tscn"),
-}
-const MAP_LABELS: Dictionary = {
-	MAP_DOOM_E1M1: "IRON HANGAR",
-	MAP_TEST_ARENA: "TEST ARENA",
-}
+const MapManagerScript: GDScript = preload("res://scripts/game/map_manager.gd")
+const WorldContentManagerScript: GDScript = preload("res://scripts/game/world_content_manager.gd")
 
 @export var player_scene: PackedScene = preload("res://scenes/player/Player.tscn")
 @export var ammo_pickup_scene: PackedScene = preload("res://scenes/pickups/AmmoPickup.tscn")
@@ -45,6 +36,8 @@ var _lobby_layer: CanvasLayer
 var _lobby_menu: LanLobbyMenu
 var _visual_director: PSXVisualDirector
 var _disco_director: MusicDiscoDirector
+var _map_manager: Node
+var _world_content: Node
 var _spawn_manager: SpawnManager
 var _pickup_spawner: PickupSpawner
 var _match_manager: MatchManager
@@ -59,25 +52,18 @@ var _local_ping_ms: int = -1
 var _peer_ping_ms: Dictionary = {}
 var _network_status_text: String = "OFFLINE"
 var _hud_player: PlayerController
-var _music_stereo: MusicStereo
 var _menu_camera: Camera3D
 var _lan_discovery: LanDiscovery
 var _lobby_options_menu: OptionsMenu
 var _match_result_overlay: MatchResultOverlay
 var _match_result_layer: CanvasLayer
 var _death_cinematic: DeathCinematicDirector
-var _active_arena: Node3D
-var _active_map_id: String = ""
-var _selected_map_id: String = MAP_DOOM_E1M1
+var _selected_map_id: String = MapManagerScript.DEFAULT_MAP_ID
 var _pending_match_rules: Dictionary = {}
 var _pending_match_result_winner_id: int = -1
 var _pending_death_cinematic_match_end: bool = false
 var _match_result_request_token: int = 0
 var _latest_death_corpse: Node3D
-var _spawned_targets: Array[Node3D] = []
-var _has_spawned_pickups: bool = false
-var _has_spawned_targets: bool = false
-var _has_spawned_music_stereo: bool = false
 var _selected_time_of_day_preset: int = PSXVisualDirector.TimeOfDayPreset.NIGHT
 var _local_gameplay_warmup_token: int = 0
 
@@ -180,6 +166,10 @@ func request_network_pickup(pickup_id: int, player_id: int) -> bool:
 
 #region Setup de managers, red y lobby
 func _setup_managers() -> void:
+	_map_manager = MapManagerScript.new()
+	_map_manager.name = "MapManager"
+	add_child(_map_manager)
+
 	_spawn_manager = SpawnManager.new()
 	_spawn_manager.name = "SpawnManager"
 	_spawn_manager.use_safe_spawn_selection = true
@@ -201,6 +191,15 @@ func _setup_managers() -> void:
 	_debug_draw_manager = ArenaDebugDrawManager.new()
 	_debug_draw_manager.name = "ArenaDebugDrawManager"
 	add_child(_debug_draw_manager)
+
+	_world_content = WorldContentManagerScript.new()
+	_world_content.name = "WorldContentManager"
+	_world_content.configure(_pickup_spawner, target_scene, music_stereo_scene, _visual_director, _disco_director)
+	add_child(_world_content)
+	_world_content.pickups_spawned.connect(_register_pickups)
+	_world_content.music_stereo_spawned.connect(_on_music_stereo_spawned)
+	_world_content.music_stereo_playback_toggle_requested.connect(_on_music_stereo_playback_toggle_requested)
+	_world_content.music_stereo_next_track_requested.connect(_on_music_stereo_next_track_requested)
 
 
 func _setup_network_manager() -> void:
@@ -246,20 +245,22 @@ func _setup_lobby_menu() -> void:
 
 
 func _load_spawn_points_from_arena() -> void:
-	if _active_arena == null:
+	var active_arena: Node3D = _get_active_arena()
+	if active_arena == null:
 		return
-	_spawn_manager.load_from_arena(_active_arena)
-	_pickup_spawner.load_from_arena(_active_arena)
+	_spawn_manager.load_from_arena(active_arena)
+	_pickup_spawner.load_from_arena(active_arena)
 	if _death_cinematic != null and _death_cinematic.has_method("setup"):
-		_death_cinematic.call("setup", _active_arena)
+		_death_cinematic.call("setup", active_arena)
 
 
 func _setup_death_cinematic() -> void:
 	_death_cinematic = DeathCinematicDirector.new()
 	_death_cinematic.name = "DeathCinematicDirector"
 	add_child(_death_cinematic)
-	if _active_arena != null and _death_cinematic.has_method("setup"):
-		_death_cinematic.call("setup", _active_arena)
+	var active_arena: Node3D = _get_active_arena()
+	if active_arena != null and _death_cinematic.has_method("setup"):
+		_death_cinematic.call("setup", active_arena)
 
 
 func _setup_match_result_overlay() -> void:
@@ -391,6 +392,21 @@ func _warmup_local_gameplay_resources(player: PlayerController) -> void:
 			gameplay_effect_pool_warmup_size,
 			gameplay_effect_pool_warmup_size
 		)
+	_warmup_death_presentation_resources()
+
+
+func _warmup_death_presentation_resources() -> void:
+	if player_corpse_scene != null:
+		var corpse: Node3D = player_corpse_scene.instantiate() as Node3D
+		if corpse != null:
+			corpse.name = "WarmupCorpse"
+			corpse.visible = false
+			add_child(corpse)
+			if corpse.has_method("setup"):
+				corpse.call("setup", Color(0.78, 0.82, 0.88), Vector3.ZERO)
+			corpse.queue_free()
+	if _match_result_overlay != null:
+		_match_result_overlay.visible = false
 
 
 func _create_gameplay_warmup_camera(player: PlayerController) -> Camera3D:
@@ -499,63 +515,43 @@ func _is_useful_lan_address(address: String) -> bool:
 
 #region Contenido del mundo y ciclo de partida
 func _get_map_options() -> Array[Dictionary]:
-	return [
-		{"id": MAP_DOOM_E1M1, "label": str(MAP_LABELS[MAP_DOOM_E1M1])},
-		{"id": MAP_TEST_ARENA, "label": str(MAP_LABELS[MAP_TEST_ARENA])},
-	]
+	return _map_manager.get_map_options()
 
 
 func _sanitize_map_id(map_id: String) -> String:
-	var clean_id: String = map_id.strip_edges().to_lower()
-	if MAP_SCENES.has(clean_id):
-		return clean_id
-	return MAP_DOOM_E1M1
+	return _map_manager.sanitize_map_id(map_id)
 
 
 func _get_map_scene(map_id: String) -> PackedScene:
-	var safe_map_id: String = _sanitize_map_id(map_id)
-	return MAP_SCENES[safe_map_id] as PackedScene
+	return _map_manager.get_map_scene(map_id)
 
 
 func _get_map_label(map_id: String) -> String:
-	var safe_map_id: String = _sanitize_map_id(map_id)
-	return str(MAP_LABELS.get(safe_map_id, safe_map_id))
+	return _map_manager.get_map_label(map_id)
 
 
 func _activate_map(map_id: String, should_spawn_world_content: bool = true) -> void:
 	var safe_map_id: String = _sanitize_map_id(map_id)
 	_selected_map_id = safe_map_id
 
-	if _active_arena != null and is_instance_valid(_active_arena) and _active_map_id == safe_map_id:
+	if _map_manager.get_active_arena() != null and _map_manager.active_map_id == safe_map_id:
 		_finish_arena_activation.call_deferred(should_spawn_world_content)
 		return
 
 	_clear_world_content()
-	if _active_arena != null and is_instance_valid(_active_arena):
-		if _active_arena.get_parent() == self:
-			remove_child(_active_arena)
-		_active_arena.queue_free()
-
-	var map_scene: PackedScene = _get_map_scene(safe_map_id)
-	_active_arena = map_scene.instantiate() as Node3D
-	if _active_arena == null:
-		push_error("Map %s must instantiate as Node3D." % safe_map_id)
-		_active_map_id = ""
+	if not _map_manager.activate_map(self, safe_map_id):
 		return
 
-	_active_map_id = safe_map_id
-	_active_arena.name = "ActiveArena"
-	add_child(_active_arena)
-	move_child(_active_arena, 0)
 	_finish_arena_activation.call_deferred(should_spawn_world_content)
 
 
 func _finish_arena_activation(should_spawn_world_content: bool) -> void:
-	if _active_arena == null or not is_instance_valid(_active_arena):
+	var active_arena: Node3D = _get_active_arena()
+	if active_arena == null:
 		return
 	_load_spawn_points_from_arena()
 	if should_spawn_world_content:
-		_spawn_world_content()
+		_spawn_world_content(active_arena)
 	_refresh_active_map_visuals()
 	_update_menu_presentation()
 
@@ -569,39 +565,25 @@ func _refresh_active_map_visuals() -> void:
 
 
 func _clear_world_content() -> void:
-	if _pickup_spawner != null:
-		_pickup_spawner.clear_pickups()
-	for target in _spawned_targets:
-		if target != null and is_instance_valid(target):
-			if target.get_parent() == self:
-				remove_child(target)
-			target.queue_free()
-	_spawned_targets.clear()
-
-	if _music_stereo != null and is_instance_valid(_music_stereo):
-		if _music_stereo.get_parent() == self:
-			remove_child(_music_stereo)
-		_music_stereo.queue_free()
-	_music_stereo = null
-
-	_has_spawned_pickups = false
-	_has_spawned_targets = false
-	_has_spawned_music_stereo = false
+	if _world_content != null:
+		_world_content.clear()
 
 
-func _spawn_world_content() -> void:
-	if not _has_spawned_pickups:
-		if _active_arena != null:
-			_pickup_spawner.load_from_arena(_active_arena)
-		_pickup_spawner.spawn_pickups(self)
-		_register_pickups()
-		_has_spawned_pickups = true
-	if not _has_spawned_targets:
-		_spawn_targets()
-		_has_spawned_targets = true
-	if not _has_spawned_music_stereo:
-		_spawn_music_stereo()
-		_has_spawned_music_stereo = true
+func _spawn_world_content(active_arena: Node3D) -> void:
+	if _world_content != null:
+		_world_content.spawn_for_arena(active_arena, self)
+
+
+func _get_active_arena() -> Node3D:
+	if _map_manager == null:
+		return null
+	return _map_manager.get_active_arena()
+
+
+func _get_music_stereo() -> MusicStereo:
+	if _world_content == null:
+		return null
+	return _world_content.get_music_stereo()
 
 
 ## Limpia jugadores, HUD y mapeos peer<->player. Punto unico de reseteo de sesion.
@@ -876,80 +858,6 @@ func _allocate_player_id() -> int:
 	return -1
 
 
-func _spawn_targets() -> void:
-	for target_position in _get_target_spawn_positions():
-		_spawn_target(target_position)
-
-
-func _spawn_target(spawn_position: Vector3) -> void:
-	var target: Node3D = target_scene.instantiate() as Node3D
-	if target == null:
-		push_error("Target scene must instantiate a Node3D.")
-		return
-	add_child(target)
-	target.global_position = _snap_world_position_to_floor(spawn_position)
-	_spawned_targets.append(target)
-
-
-func _snap_world_position_to_floor(spawn_position: Vector3) -> Vector3:
-	return FloorSnapScript.snap_to_floor(spawn_position, get_world_3d().direct_space_state)
-
-
-func _get_target_spawn_positions() -> Array[Vector3]:
-	var target_positions: Array[Vector3] = []
-	if _active_arena != null:
-		var target_root: Node = _active_arena.get_node_or_null("TargetSpawns")
-		if target_root != null:
-			for child in target_root.get_children():
-				if child is Node3D:
-					target_positions.append((child as Node3D).global_position)
-
-		if target_positions.is_empty():
-			for marker_node in _active_arena.find_children("*", "Node3D", true, false):
-				var marker := marker_node as Node3D
-				if marker != null and marker.is_in_group("target_spawns"):
-					target_positions.append(marker.global_position)
-
-	if not target_positions.is_empty():
-		return target_positions
-
-	return [
-		Vector3(-7.0, 0.0, -8.0),
-		Vector3(7.0, 0.0, 8.0),
-		Vector3(0.0, 0.0, -5.5),
-	]
-
-
-func _spawn_music_stereo() -> void:
-	var music_stereo: MusicStereo = music_stereo_scene.instantiate() as MusicStereo
-	if music_stereo == null:
-		push_error("Music stereo scene must instantiate MusicStereo.")
-		return
-
-	add_child(music_stereo)
-	var stereo_spawn: Node3D = _get_music_stereo_spawn_marker()
-	if stereo_spawn != null:
-		music_stereo.global_transform = stereo_spawn.global_transform
-		music_stereo.global_position = _snap_world_position_to_floor(stereo_spawn.global_position)
-	else:
-		music_stereo.global_position = _snap_world_position_to_floor(Vector3(-13.5, 0.0, 13.5))
-		music_stereo.rotation_degrees.y = -135.0
-	music_stereo.playback_toggle_requested.connect(_on_music_stereo_playback_toggle_requested)
-	music_stereo.next_track_requested.connect(_on_music_stereo_next_track_requested)
-	_music_stereo = music_stereo
-	for hud in _huds:
-		if hud != null:
-			hud.bind_music_stereo(_music_stereo)
-	if _disco_director != null:
-		_disco_director.bind(_music_stereo, _visual_director)
-
-
-func _get_music_stereo_spawn_marker() -> Node3D:
-	if _active_arena == null:
-		return null
-	return _active_arena.get_node_or_null("MusicStereoSpawn") as Node3D
-
-
 func _register_pickups() -> void:
 	for pickup_index in range(_pickup_spawner.spawned_pickups.size()):
 		var pickup: PickupBase = _pickup_spawner.spawned_pickups[pickup_index] as PickupBase
@@ -1039,8 +947,9 @@ func _setup_local_hud(player: PlayerController) -> void:
 	_huds.append(hud)
 	hud.bind_player(player)
 	hud.bind_match(_match_manager, player.player_id)
-	if _music_stereo != null:
-		hud.bind_music_stereo(_music_stereo)
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo != null:
+		hud.bind_music_stereo(music_stereo)
 	if _visual_director != null:
 		hud.bind_visual_director(_visual_director)
 	_hud_player = player
@@ -1257,14 +1166,15 @@ func _sync_score_snapshot_to_peers() -> void:
 
 
 func _sync_music_stereo_to_peer(peer_id: int) -> void:
-	if _music_stereo == null or not _is_networked() or not multiplayer.is_server() or peer_id == 1:
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo == null or not _is_networked() or not multiplayer.is_server() or peer_id == 1:
 		return
 
 	_network_apply_music_stereo_state.rpc_id(
 		peer_id,
-		_music_stereo.get_track_index(),
-		_music_stereo.is_playing(),
-		_music_stereo.get_playback_position()
+		music_stereo.get_track_index(),
+		music_stereo.is_playing(),
+		music_stereo.get_playback_position()
 	)
 
 
@@ -1320,6 +1230,14 @@ func _apply_player_pickup(pickup_id: int, player_id: int, requesting_peer_id: in
 func _on_pickup_availability_changed(pickup_id: int, is_available: bool) -> void:
 	if _is_networked() and multiplayer.is_server():
 		_network_set_pickup_available.rpc(pickup_id, is_available)
+
+
+func _on_music_stereo_spawned(music_stereo: MusicStereo) -> void:
+	if music_stereo == null:
+		return
+	for hud in _huds:
+		if hud != null:
+			hud.bind_music_stereo(music_stereo)
 
 
 func _on_player_damaged(_amount: int, player: PlayerController) -> void:
@@ -1401,29 +1319,32 @@ func _on_music_stereo_next_track_requested() -> void:
 
 
 func _apply_music_stereo_toggle() -> void:
-	if _music_stereo == null:
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo == null:
 		return
 
-	_music_stereo.toggle_playback()
+	music_stereo.toggle_playback()
 	_broadcast_music_stereo_state()
 
 
 func _apply_music_stereo_next() -> void:
-	if _music_stereo == null:
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo == null:
 		return
 
-	_music_stereo.next_track()
+	music_stereo.next_track()
 	_broadcast_music_stereo_state()
 
 
 func _broadcast_music_stereo_state() -> void:
-	if _music_stereo == null or not _is_networked() or not multiplayer.is_server():
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo == null or not _is_networked() or not multiplayer.is_server():
 		return
 
 	_network_apply_music_stereo_state.rpc(
-		_music_stereo.get_track_index(),
-		_music_stereo.is_playing(),
-		_music_stereo.get_playback_position()
+		music_stereo.get_track_index(),
+		music_stereo.is_playing(),
+		music_stereo.get_playback_position()
 	)
 
 
@@ -1921,9 +1842,10 @@ func _network_apply_time_of_day_preset(time_of_day_preset: int) -> void:
 
 @rpc("authority", "reliable")
 func _network_apply_music_stereo_state(track_index: int, should_play: bool, playback_position: float) -> void:
-	if _music_stereo == null:
+	var music_stereo: MusicStereo = _get_music_stereo()
+	if music_stereo == null:
 		return
-	_music_stereo.apply_remote_state(track_index, should_play, playback_position)
+	music_stereo.apply_remote_state(track_index, should_play, playback_position)
 
 
 @rpc("authority", "reliable")
