@@ -102,6 +102,8 @@ func cycle_time_of_day_preset() -> void:
 
 func apply_lens_preset(preset: LensPreset) -> void:
 	var safe_preset: int = clampi(int(preset), 0, LensPreset.size() - 1)
+	if int(lens_preset) == safe_preset:
+		return
 	lens_preset = safe_preset as LensPreset
 	_apply_lens_preset_values(lens_preset)
 	refresh_visual_style()

@@ -115,11 +115,21 @@ func apply_to_player(player: PlayerController) -> void:
 func apply_to_visual_director(visual_director: PSXVisualDirector) -> void:
 	if visual_director == null:
 		return
-	visual_director.post_process_enabled = true if is_low_power_profile() else psx_filter_enabled
+
+	var next_post_process_enabled: bool = true if is_low_power_profile() else psx_filter_enabled
+	var needs_refresh: bool = (
+		visual_director.post_process_enabled != next_post_process_enabled
+		or int(visual_director.time_of_day_preset) != time_of_day_preset
+	)
+	var lens_changed: bool = int(visual_director.lens_preset) != lens_preset
+	var performance_changed: bool = int(visual_director.get("_performance_profile")) != int(performance_profile)
+
+	visual_director.post_process_enabled = next_post_process_enabled
 	visual_director.time_of_day_preset = time_of_day_preset
 	visual_director.apply_lens_preset(lens_preset as PSXVisualDirector.LensPreset)
 	visual_director.apply_performance_profile(int(performance_profile))
-	visual_director.refresh_visual_style()
+	if needs_refresh and not lens_changed and not performance_changed:
+		visual_director.refresh_visual_style()
 
 
 func set_performance_profile(profile: int, apply_now: bool = true) -> void:

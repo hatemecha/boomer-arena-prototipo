@@ -83,6 +83,8 @@ const DEFAULT_CENTER_TEXT_SCALE: Vector2 = Vector2.ONE
 const ULTRA_LOW_CENTER_TEXT_SCALE: Vector2 = Vector2(0.72, 0.72)
 const HEALTH_WARN_RATIO: float = 0.3
 const DEBUG_LABEL_REFRESH_INTERVAL: float = 0.20
+const DEBUG_LABEL_REFRESH_INTERVAL_LOW: float = 0.35
+const DEBUG_LABEL_REFRESH_INTERVAL_ULTRA_LOW: float = 0.50
 
 var _player: PlayerController
 var _visual_director: PSXVisualDirector
@@ -112,12 +114,15 @@ var _debug_refresh_timer: float = 0.0
 var _crosshair_supports_set_aiming: bool = false
 var _last_crosshair_aiming: bool = false
 var _performance_profile: int = 0
+var _debug_label_refresh_interval: float = DEBUG_LABEL_REFRESH_INTERVAL
+var _base_hud_motion_enabled: bool = true
 const MAX_KILL_FEED_ENTRIES: int = 5
 const KILL_FEED_LIFETIME: float = 4.0
 
 
 func _ready() -> void:
 	process_priority = 1
+	_base_hud_motion_enabled = hud_motion_enabled
 	_ensure_optional_labels()
 	_ensure_pickup_interaction_widgets()
 	_capture_hud_base_offsets()
@@ -173,6 +178,16 @@ func reset_motion() -> void:
 
 func apply_performance_profile(profile: int) -> void:
 	_performance_profile = clampi(profile, 0, 2)
+	match _performance_profile:
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
+			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL_LOW
+			hud_motion_enabled = _base_hud_motion_enabled
+		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
+			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL_ULTRA_LOW
+			hud_motion_enabled = false
+		_:
+			_debug_label_refresh_interval = DEBUG_LABEL_REFRESH_INTERVAL
+			hud_motion_enabled = _base_hud_motion_enabled
 	_apply_lens_safe_layout(_visual_director.lens_preset if _visual_director != null else PSXVisualDirector.LensPreset.PSX_8MM)
 	_apply_hud_motion()
 
@@ -196,8 +211,7 @@ func bind_player(player: PlayerController) -> void:
 	_player = player
 	process_priority = maxi(player.process_priority + 1, 1)
 	_local_player_id = player.player_id
-	if player_label != null:
-		player_label.text = "%s  P%d" % [player.display_name.to_upper(), player.player_id]
+	_set_label_text(player_label, "%s  P%d" % [player.display_name.to_upper(), player.player_id])
 	if player.health == null:
 		push_error("HUD cannot bind because the player has no health component.")
 		return
@@ -253,8 +267,7 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 	_set_match_widgets_visible(_match_manager.match_running)
 	_refresh_score_label()
 	_refresh_match_objective()
-	if match_label != null:
-		match_label.text = "PRIMERO A %d BAJAS" % _match_manager.score_limit
+	_set_label_text(match_label, "PRIMERO A %d BAJAS" % _match_manager.score_limit)
 
 
 func bind_music_stereo(music_stereo: MusicStereo) -> void:
@@ -283,7 +296,7 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 
 func _process(delta: float) -> void:
 	_debug_refresh_timer += delta
-	if _debug_refresh_timer >= DEBUG_LABEL_REFRESH_INTERVAL:
+	if _debug_refresh_timer >= _debug_label_refresh_interval:
 		_debug_refresh_timer = 0.0
 		_update_fps_label()
 		if _debug_visible:
@@ -335,9 +348,7 @@ func is_crosshair_enabled() -> bool:
 
 
 func set_network_status(status: String) -> void:
-	if network_label == null:
-		return
-	network_label.text = status.to_upper()
+	_set_label_text(network_label, status.to_upper())
 
 
 func set_network_stats(status: String, ping_ms: int, peer_count: int) -> void:
@@ -348,30 +359,27 @@ func set_network_stats(status: String, ping_ms: int, peer_count: int) -> void:
 	var ping_text: String = "LOCAL" if ping_ms < 0 else "%d MS" % ping_ms
 	var display_players: int = maxi(peer_count, 1)
 	var player_text: String = "JUGADOR" if display_players == 1 else "JUGADORES"
-	ping_label.text = "%s  ·  %d %s" % [ping_text, display_players, player_text]
+	_set_label_text(ping_label, "%s  ·  %d %s" % [ping_text, display_players, player_text])
 
 
 func _on_health_changed(current_health: int, max_health: int) -> void:
 	_health = current_health
 	_max_health = max_health
-	if health_label != null:
-		health_label.text = "%d / %d" % [_health, _max_health]
+	_set_label_text(health_label, "%d / %d" % [_health, _max_health])
 	_update_health_tint()
 
 
 func _on_ammo_changed(ammo_in_mag: int, reserve_ammo: int) -> void:
 	_ammo_in_mag = ammo_in_mag
 	_reserve_ammo = reserve_ammo
-	if ammo_label != null:
-		ammo_label.text = "%d / %d" % [_ammo_in_mag, _reserve_ammo]
+	_set_label_text(ammo_label, "%d / %d" % [_ammo_in_mag, _reserve_ammo])
 
 
 func _on_weapon_state_changed(state: String) -> void:
 	var weapon_name: String = "NONE"
 	if _active_weapon != null:
 		weapon_name = _active_weapon.weapon_name
-	if weapon_label != null:
-		weapon_label.text = "%s · %s" % [weapon_name, state]
+	_set_label_text(weapon_label, "%s · %s" % [weapon_name, state])
 
 
 func _on_active_weapon_changed(next_weapon: WeaponBase) -> void:
@@ -446,15 +454,12 @@ func _cache_crosshair_capabilities() -> void:
 
 
 func _update_fps_label() -> void:
-	if fps_label != null:
-		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+	_set_label_text(fps_label, "%d FPS" % Engine.get_frames_per_second())
 
 
 func _update_debug_labels() -> void:
-	if position_label != null:
-		position_label.text = "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z]
-	if speed_label != null:
-		speed_label.text = "%.1f u/s" % _debug_speed
+	_set_label_text(position_label, "%.1f, %.1f, %.1f" % [_debug_position.x, _debug_position.y, _debug_position.z])
+	_set_label_text(speed_label, "%.1f u/s" % _debug_speed)
 
 
 func _center_crosshair() -> void:
@@ -561,17 +566,14 @@ func _refresh_match_objective() -> void:
 
 	match _match_manager.win_mode:
 		MatchManager.WinMode.TIME_LIMIT:
-			match_objective.text = _match_manager.format_time_remaining()
-			if match_objective_sub != null:
-				match_objective_sub.text = ""
+			_set_label_text(match_objective, _match_manager.format_time_remaining())
+			_set_label_text(match_objective_sub, "")
 		MatchManager.WinMode.PRACTICE:
-			match_objective.text = "PRÁCTICA"
-			if match_objective_sub != null:
-				match_objective_sub.text = ""
+			_set_label_text(match_objective, "PRÁCTICA")
+			_set_label_text(match_objective_sub, "")
 		_:
-			match_objective.text = "PRIMERO A %d" % _match_manager.score_limit
-			if match_objective_sub != null:
-				match_objective_sub.text = ""
+			_set_label_text(match_objective, "PRIMERO A %d" % _match_manager.score_limit)
+			_set_label_text(match_objective_sub, "")
 	_refresh_scoreboard()
 
 
@@ -579,7 +581,7 @@ func _refresh_score_label() -> void:
 	if score_label == null or _match_manager == null:
 		return
 
-	score_label.text = _match_manager.format_score_line()
+	_set_label_text(score_label, _match_manager.format_score_line())
 	_refresh_scoreboard()
 
 
@@ -597,7 +599,7 @@ func _refresh_scoreboard() -> void:
 			player_name = "P%d" % player_id
 		var prefix: String = ">" if player_id == _local_player_id else " "
 		parts.append("%s %s  %d" % [prefix, player_name.to_upper(), _match_manager.get_kills(player_id)])
-	scoreboard_label.text = "\n".join(parts)
+	_set_label_text(scoreboard_label, "\n".join(parts))
 
 
 func _on_lens_preset_changed(preset: PSXVisualDirector.LensPreset) -> void:
@@ -613,26 +615,23 @@ func _on_music_track_changed(title: String, artist: String, cover: Texture2D, is
 		music_panel.visible = is_playing
 	if music_cover != null:
 		music_cover.texture = cover
-	if music_title_label != null:
-		music_title_label.text = title.to_upper()
-	if music_artist_label != null:
-		music_artist_label.text = artist.to_upper()
-	if music_state_label != null:
-		music_state_label.text = "REPRODUCIENDO" if is_playing else "PAUSADO"
+	_set_label_text(music_title_label, title.to_upper())
+	_set_label_text(music_artist_label, artist.to_upper())
+	_set_label_text(music_state_label, "REPRODUCIENDO" if is_playing else "PAUSADO")
 
 
 func _on_music_proximity_changed(_is_near: bool) -> void:
 	if music_state_label == null or _music_stereo == null:
 		return
 
-	music_state_label.text = "REPRODUCIENDO" if _music_stereo.is_playing() else "PAUSADO"
+	_set_label_text(music_state_label, "REPRODUCIENDO" if _music_stereo.is_playing() else "PAUSADO")
 
 
 func _on_music_interaction_hint_changed(text: String, is_visible: bool) -> void:
 	if interaction_hint == null:
 		return
 
-	interaction_hint.text = text
+	_set_label_text(interaction_hint, text)
 	interaction_hint.visible = is_visible
 
 
@@ -723,6 +722,12 @@ func _set_control_scale(control: Control, next_scale: Vector2, use_center_pivot:
 		return
 	control.scale = next_scale
 	control.pivot_offset = control.size * 0.5 if use_center_pivot else Vector2.ZERO
+
+
+func _set_label_text(label: Label, next_text: String) -> void:
+	if label == null or label.text == next_text:
+		return
+	label.text = next_text
 
 
 func _apply_music_panel_layout(top: float, right_inset: float) -> void:
@@ -886,7 +891,7 @@ func _on_pickup_interaction_changed(prompt: String, progress: float, is_visible:
 		return
 
 	if pickup_interaction_label != null:
-		pickup_interaction_label.text = prompt.to_upper()
+		_set_label_text(pickup_interaction_label, prompt.to_upper())
 		pickup_interaction_label.modulate = HudIcons.get_tag_tint() if can_collect else HudIcons.HUD_WARN_TINT
 	if pickup_interaction_fill != null:
 		pickup_interaction_fill.color = HudIcons.get_tag_tint() if can_collect else HudIcons.HUD_WARN_TINT

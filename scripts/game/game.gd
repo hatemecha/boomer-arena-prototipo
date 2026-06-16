@@ -647,7 +647,8 @@ func _start_network_match_as_server() -> void:
 	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
 	_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	_sync_score_snapshot_to_peers()
-	_start_lan_discovery_host()
+	if _lan_discovery != null:
+		_lan_discovery.stop_all()
 
 
 func _prepare_client_match() -> void:
@@ -796,6 +797,8 @@ func _apply_match_rules(match_rules: Dictionary) -> void:
 
 func _start_lan_discovery_host() -> void:
 	if _lan_discovery == null:
+		return
+	if _is_match_active():
 		return
 	var mode_text: String = "time" if _match_manager.win_mode == MatchManager.WinMode.TIME_LIMIT else "kills"
 	var limit_value: int = int(_match_manager.time_limit_seconds / 60.0) if mode_text == "time" else _match_manager.score_limit
@@ -1426,8 +1429,6 @@ func _broadcast_music_stereo_state() -> void:
 
 func _on_score_changed(_player_id: int, _kills: int, _deaths: int) -> void:
 	_sync_score_snapshot_to_peers()
-	if _is_networked() and multiplayer.is_server():
-		_start_lan_discovery_host()
 
 
 func _on_kill_feed_event(killer_name: String, victim_name: String, killer_id: int, victim_id: int) -> void:
@@ -1661,7 +1662,8 @@ func _on_server_disconnected() -> void:
 func _on_network_peer_connected(peer_id: int) -> void:
 	if multiplayer.is_server():
 		_register_network_peer(peer_id)
-		_start_lan_discovery_host()
+		if not _is_match_active():
+			_start_lan_discovery_host()
 	_refresh_network_hud()
 
 
@@ -1802,6 +1804,10 @@ func _get_player_node_name(peer_id: int) -> String:
 
 func _is_networked() -> bool:
 	return _network_manager != null and _network_manager.is_networked()
+
+
+func _is_match_active() -> bool:
+	return _match_manager != null and _match_manager.match_running
 
 
 func _is_local_peer(peer_id: int) -> bool:

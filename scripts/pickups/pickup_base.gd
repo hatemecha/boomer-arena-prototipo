@@ -118,10 +118,10 @@ func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	match safe_profile:
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
-			_presentation_update_hz = 20.0
-			_dynamic_glow_enabled = true
+			_presentation_update_hz = 15.0
+			_dynamic_glow_enabled = false
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
-			_presentation_update_hz = 10.0
+			_presentation_update_hz = 8.0
 			_dynamic_glow_enabled = false
 		_:
 			_presentation_update_hz = 60.0

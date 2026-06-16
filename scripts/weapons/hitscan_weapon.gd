@@ -61,18 +61,18 @@ func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	match safe_profile:
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_LOW:
-			impact_lifetime = minf(_default_impact_lifetime, 0.35)
-			decal_lifetime = minf(_default_decal_lifetime, 3.0)
-			max_active_impacts = mini(_default_max_active_impacts, 24)
-			max_active_decals = mini(_default_max_active_decals, 32)
-			bullet_bounce_lifetime = minf(_default_bullet_bounce_lifetime, 0.9)
-			bullet_bounce_distance = _default_bullet_bounce_distance
-			bullet_bounce_enabled = true
+			impact_lifetime = minf(_default_impact_lifetime, 0.18)
+			decal_lifetime = minf(_default_decal_lifetime, 1.2)
+			max_active_impacts = mini(_default_max_active_impacts, 12)
+			max_active_decals = mini(_default_max_active_decals, 16)
+			bullet_bounce_lifetime = 0.0
+			bullet_bounce_distance = 0.0
+			bullet_bounce_enabled = false
 		PlayerSettingsAccess.PERFORMANCE_PROFILE_ULTRA_LOW:
-			impact_lifetime = minf(_default_impact_lifetime, 0.25)
-			decal_lifetime = minf(_default_decal_lifetime, 1.8)
-			max_active_impacts = mini(_default_max_active_impacts, 8)
-			max_active_decals = mini(_default_max_active_decals, 12)
+			impact_lifetime = 0.0
+			decal_lifetime = minf(_default_decal_lifetime, 0.45)
+			max_active_impacts = 0
+			max_active_decals = mini(_default_max_active_decals, 4)
 			bullet_bounce_lifetime = 0.0
 			bullet_bounce_distance = 0.0
 			bullet_bounce_enabled = false
