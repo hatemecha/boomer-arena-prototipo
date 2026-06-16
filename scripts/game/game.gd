@@ -599,18 +599,12 @@ func _reset_session() -> void:
 
 
 func _start_offline_match() -> void:
-	_reset_session()
-	_activate_map(_selected_map_id, true)
-	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
-	_apply_match_rules(_pending_match_rules)
-	_match_manager.start_match()
-	_lan_discovery.stop_all()
+	_prepare_match_world()
+	_stop_lan_discovery()
 	_peer_to_player_id[1] = 1
 	_player_id_to_peer[1] = 1
 	_match_manager.ensure_player(1)
-
-	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
-	_spawn_or_update_player(1, 1, spawn_transform.origin, spawn_transform.basis.get_euler().y)
+	_spawn_player_at_fresh_spawn(1, 1)
 	_on_network_status_changed("OFFLINE")
 
 
@@ -619,18 +613,30 @@ func _start_network_match_as_server() -> void:
 		push_error("Cannot start a network match without a LAN host.")
 		return
 
-	_reset_session()
-	_activate_map(_selected_map_id, true)
-	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
-	_apply_match_rules(_pending_match_rules)
-	_match_manager.start_match()
+	_prepare_match_world()
 	_register_network_peer(1)
 	_network_load_map.rpc(_selected_map_id)
 	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
 	_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	_sync_score_snapshot_to_peers()
-	if _lan_discovery != null:
-		_lan_discovery.stop_all()
+	_stop_lan_discovery()
+
+
+func _prepare_match_world() -> void:
+	_reset_session()
+	_activate_map(_selected_map_id, true)
+	_apply_time_of_day_preset(_selected_time_of_day_preset, true)
+	_apply_match_rules(_pending_match_rules)
+	_match_manager.start_match()
+
+
+func _spawn_player_at_fresh_spawn(peer_id: int, player_id: int) -> PlayerController:
+	var spawn_transform: Transform3D = _get_fresh_spawn_transform()
+	return _spawn_or_update_player(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
+
+
+func _get_fresh_spawn_transform() -> Transform3D:
+	return _spawn_manager.get_spawn_transform(players)
 
 
 func _prepare_client_match() -> void:
@@ -656,7 +662,7 @@ func _start_lan_join() -> void:
 
 func _disconnect_lan() -> void:
 	_network_manager.disconnect_network()
-	_lan_discovery.stop_all()
+	_stop_lan_discovery()
 	_reset_session()
 	_peer_ping_ms.clear()
 	_local_ping_ms = -1
@@ -693,7 +699,7 @@ func _on_lobby_join_requested(address: String, port: int) -> void:
 	default_lan_join_address = address.strip_edges()
 	lan_port = port
 	_pending_match_rules = {}
-	_lan_discovery.stop_all()
+	_stop_lan_discovery()
 	_network_manager.configure(lan_port, default_lan_join_address, maxi(max_lan_players - 1, 1))
 	_start_lan_join()
 
@@ -707,7 +713,7 @@ func _on_lobby_practice_requested(map_id: String, time_of_day_preset: int, _matc
 		"time_limit_seconds": 0.0,
 	}
 	_network_manager.disconnect_network(false)
-	_lan_discovery.stop_all()
+	_stop_lan_discovery()
 	_start_offline_match()
 
 
@@ -764,6 +770,10 @@ func _on_lobby_browse_requested() -> void:
 
 
 func _on_lobby_browse_stopped() -> void:
+	_stop_lan_discovery()
+
+
+func _stop_lan_discovery() -> void:
 	if _lan_discovery != null:
 		_lan_discovery.stop_all()
 
@@ -829,9 +839,10 @@ func _register_network_peer(peer_id: int) -> void:
 	_player_id_to_peer[player_id] = peer_id
 	_match_manager.ensure_player(player_id)
 
-	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players)
 	if peer_id != 1:
 		_network_load_map.rpc_id(peer_id, _selected_map_id)
+	var spawn_transform: Transform3D = _get_fresh_spawn_transform()
+	_spawn_or_update_player(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
 	_network_spawn_player.rpc(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
 	_network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(peer_id)
@@ -1250,36 +1261,21 @@ func _on_player_died(player: PlayerController) -> void:
 		return
 
 	var killer_position: Vector3 = Vector3.ZERO
-	var killer_id: int = 0
-	var action_position: Vector3 = player.global_position if player != null else Vector3.ZERO
 	var match_ended_from_kill: bool = false
-	var match_will_end_from_kill: bool = false
 	if player != null:
-		killer_id = player.last_damage_source_player_id
-		if killer_id > 0 and killer_id != player.player_id:
-			var killer: PlayerController = _get_player_by_player_id(killer_id)
-			if killer != null:
-				killer_position = killer.global_position
-				player.last_killer_position = killer_position
-			match_will_end_from_kill = _match_manager.kill_would_end_match(killer_id)
-			if match_will_end_from_kill:
-				_pending_death_cinematic_match_end = true
-				_pending_match_result_winner_id = killer_id
-			_match_manager.register_kill(killer_id, player.player_id)
+		var death_context: Dictionary = _build_death_context(player)
+		var killer_id: int = int(death_context["killer_id"])
+		killer_position = death_context["killer_position"]
+		if bool(death_context["has_killer"]):
+			_register_player_kill(player, killer_id)
 		else:
 			_match_manager.register_death(player.player_id)
 		match_ended_from_kill = not _match_manager.match_running
 		_sync_player_health_to_peers(player)
 		var corpse: Node3D = _spawn_corpse(player, killer_position)
-		if _is_networked() and multiplayer.is_server():
-			_network_spawn_corpse.rpc(
-				player.global_position,
-				player.rotation,
-				player.get_body_color(),
-				killer_position - player.global_position
-			)
-		if killer_id > 0 and killer_id != player.player_id:
-			_play_death_cinematic(action_position, match_ended_from_kill, corpse, killer_id)
+		_broadcast_corpse_spawn(player, killer_position)
+		if bool(death_context["has_killer"]):
+			_play_death_cinematic(player.global_position, match_ended_from_kill, corpse, killer_id)
 		if match_ended_from_kill:
 			_queue_match_result_overlay(killer_id if killer_id > 0 else _pending_match_result_winner_id)
 
@@ -1289,6 +1285,40 @@ func _on_player_died(player: PlayerController) -> void:
 	await get_tree().create_timer(player_respawn_delay).timeout
 	if player != null and is_instance_valid(player) and _match_manager.match_running:
 		_respawn_player(player, killer_position)
+
+
+func _build_death_context(player: PlayerController) -> Dictionary:
+	var killer_id: int = player.last_damage_source_player_id
+	var has_killer: bool = killer_id > 0 and killer_id != player.player_id
+	var killer_position: Vector3 = Vector3.ZERO
+	if has_killer:
+		var killer: PlayerController = _get_player_by_player_id(killer_id)
+		if killer != null:
+			killer_position = killer.global_position
+			player.last_killer_position = killer_position
+	return {
+		"killer_id": killer_id,
+		"has_killer": has_killer,
+		"killer_position": killer_position,
+	}
+
+
+func _register_player_kill(player: PlayerController, killer_id: int) -> void:
+	if _match_manager.kill_would_end_match(killer_id):
+		_pending_death_cinematic_match_end = true
+		_pending_match_result_winner_id = killer_id
+	_match_manager.register_kill(killer_id, player.player_id)
+
+
+func _broadcast_corpse_spawn(player: PlayerController, killer_position: Vector3) -> void:
+	if not _is_networked() or not multiplayer.is_server():
+		return
+	_network_spawn_corpse.rpc(
+		player.global_position,
+		player.rotation,
+		player.get_body_color(),
+		killer_position - player.global_position
+	)
 
 
 func _on_options_respawn_requested() -> void:
@@ -1534,33 +1564,39 @@ func _execute_rematch() -> void:
 	if _is_networked():
 		if multiplayer.is_server():
 			for player in players:
-				if player == null:
-					continue
-				var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players, Vector3.ZERO, 2.5, player)
-				var peer_id: int = _get_peer_id_for_player(player)
-				_apply_network_respawn_player(
-					peer_id,
-					player.player_id,
-					spawn_transform.origin,
-					spawn_transform.basis.get_euler().y
-				)
-				_network_respawn_player.rpc(
-					peer_id,
-					player.player_id,
-					spawn_transform.origin,
-					spawn_transform.basis.get_euler().y
-				)
-				_sync_player_health_to_peers(player)
+				_respawn_player_for_rematch(player, true)
 			_sync_score_snapshot_to_peers()
 			_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	else:
 		for player in players:
-			if player == null:
-				continue
-			var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players, Vector3.ZERO, 2.5, player)
-			player.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)
-			if player.has_method("restore_match_control"):
-				player.restore_match_control()
+			_respawn_player_for_rematch(player, false)
+
+
+func _respawn_player_for_rematch(player: PlayerController, should_sync_network: bool) -> void:
+	if player == null:
+		return
+
+	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players, Vector3.ZERO, 2.5, player)
+	if should_sync_network:
+		var peer_id: int = _get_peer_id_for_player(player)
+		_apply_network_respawn_player(
+			peer_id,
+			player.player_id,
+			spawn_transform.origin,
+			spawn_transform.basis.get_euler().y
+		)
+		_network_respawn_player.rpc(
+			peer_id,
+			player.player_id,
+			spawn_transform.origin,
+			spawn_transform.basis.get_euler().y
+		)
+		_sync_player_health_to_peers(player)
+		return
+
+	player.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)
+	if player.has_method("restore_match_control"):
+		player.restore_match_control()
 
 
 func _on_joined_server() -> void:

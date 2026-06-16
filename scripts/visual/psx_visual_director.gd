@@ -19,6 +19,11 @@ enum LensPreset {
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 const PSX_FAST_SHADER: Shader = preload("res://shaders/psx_palette_fast.gdshader")
 const EXTERIOR_SUN_LIGHT_NAME: StringName = &"ExteriorSunLight"
+const ARENA_LIGHT_PREFIX: String = "ArenaLight"
+const AISLE_FILL_LIGHT_PREFIX: String = "AisleFill"
+const WINDOW_FILL_LIGHT_PREFIX: String = "WindowFill"
+const SKY_PORTAL_PREFIX: String = "SkyPortal"
+const LIGHT_PANEL_PREFIX: String = "LightPanel"
 ## Debe quedar por encima del HUD (200) para que el filtro PSX afecte la interfaz.
 const POST_PROCESS_CANVAS_LAYER: int = 220
 
@@ -78,6 +83,9 @@ var _cached_aisle_fill_lights: Array[OmniLight3D] = []
 var _cached_window_fill_lights: Array[OmniLight3D] = []
 var _cached_sky_portals: Array[MeshInstance3D] = []
 var _cached_light_panels: Array[MeshInstance3D] = []
+var _warned_missing_scene_root: bool = false
+var _warned_missing_world_environment: bool = false
+var _warned_missing_main_light: bool = false
 
 var _music_tint_color: Color = Color.WHITE
 var _music_tint_strength: float = 0.0
@@ -146,6 +154,9 @@ func refresh_visual_style() -> void:
 func invalidate_scene_cache() -> void:
 	_scene_cache_valid = false
 	_nearest_filtering_applied = false
+	_warned_missing_world_environment = false
+	_warned_missing_main_light = false
+	_warned_missing_scene_root = false
 
 
 func set_music_tint_override(color: Color, strength: float) -> void:
@@ -223,6 +234,17 @@ func _ensure_scene_cache() -> void:
 	if _scene_cache_valid:
 		return
 
+	_clear_scene_cache()
+
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+
+	_collect_scene_nodes(scene_root)
+	_scene_cache_valid = true
+
+
+func _clear_scene_cache() -> void:
 	_cached_world_environment = null
 	_cached_main_light = null
 	_cached_exterior_light = null
@@ -231,13 +253,6 @@ func _ensure_scene_cache() -> void:
 	_cached_window_fill_lights.clear()
 	_cached_sky_portals.clear()
 	_cached_light_panels.clear()
-
-	var scene_root: Node = get_tree().current_scene
-	if scene_root == null:
-		return
-
-	_collect_scene_nodes(scene_root)
-	_scene_cache_valid = true
 
 
 func _collect_scene_nodes(node: Node) -> void:
@@ -248,18 +263,18 @@ func _collect_scene_nodes(node: Node) -> void:
 			if _cached_exterior_light == null:
 				_cached_exterior_light = node
 		elif _cached_main_light == null:
-			_cached_main_light = node
+				_cached_main_light = node
 	elif node is OmniLight3D:
-		if node.name.begins_with("ArenaLight"):
+		if node.name.begins_with(ARENA_LIGHT_PREFIX):
 			_cached_arena_lights.append(node)
-		elif node.name.begins_with("AisleFill"):
+		elif node.name.begins_with(AISLE_FILL_LIGHT_PREFIX):
 			_cached_aisle_fill_lights.append(node)
-		elif node.name.begins_with("WindowFill"):
+		elif node.name.begins_with(WINDOW_FILL_LIGHT_PREFIX):
 			_cached_window_fill_lights.append(node)
 	elif node is MeshInstance3D:
-		if node.name.begins_with("SkyPortal"):
+		if node.name.begins_with(SKY_PORTAL_PREFIX):
 			_cached_sky_portals.append(node)
-		elif node.name.begins_with("LightPanel"):
+		elif node.name.begins_with(LIGHT_PANEL_PREFIX):
 			_cached_light_panels.append(node)
 
 	for child in node.get_children():
@@ -268,14 +283,14 @@ func _collect_scene_nodes(node: Node) -> void:
 
 func _apply_environment_preset() -> void:
 	if _cached_world_environment == null:
-		push_warning("PSXVisualDirector could not find a WorldEnvironment node.")
+		_warn_missing_world_environment_once()
 	else:
 		if _cached_world_environment.environment == null:
 			_cached_world_environment.environment = Environment.new()
 		_configure_environment(_cached_world_environment.environment)
 
 	if _cached_main_light == null:
-		push_warning("PSXVisualDirector could not find a DirectionalLight3D node.")
+		_warn_missing_main_light_once()
 	else:
 		_configure_directional_light(_cached_main_light)
 
@@ -285,6 +300,20 @@ func _apply_environment_preset() -> void:
 	_configure_window_fill_lights()
 	_configure_sky_portals()
 	_configure_ceiling_light_panels()
+
+
+func _warn_missing_world_environment_once() -> void:
+	if _warned_missing_world_environment:
+		return
+	_warned_missing_world_environment = true
+	push_warning("PSXVisualDirector could not find a WorldEnvironment node.")
+
+
+func _warn_missing_main_light_once() -> void:
+	if _warned_missing_main_light:
+		return
+	_warned_missing_main_light = true
+	push_warning("PSXVisualDirector could not find a DirectionalLight3D node.")
 
 
 func _configure_environment(environment: Environment) -> void:
@@ -751,7 +780,7 @@ func _set_sky_material(
 
 func _apply_nearest_filtering(root: Node) -> void:
 	if root == null:
-		push_warning("PSXVisualDirector cannot apply material filtering without a scene root.")
+		_warn_missing_scene_root_once()
 		return
 
 	if root is MeshInstance3D:
@@ -759,6 +788,13 @@ func _apply_nearest_filtering(root: Node) -> void:
 
 	for child in root.get_children():
 		_apply_nearest_filtering(child)
+
+
+func _warn_missing_scene_root_once() -> void:
+	if _warned_missing_scene_root:
+		return
+	_warned_missing_scene_root = true
+	push_warning("PSXVisualDirector cannot apply material filtering without a scene root.")
 
 
 func _configure_mesh_materials(mesh_instance: MeshInstance3D) -> void:

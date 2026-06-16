@@ -27,12 +27,15 @@ signal respawned
 signal weapon_fired(weapon_name: String)
 signal pickup_interaction_changed(prompt: String, progress: float, is_visible: bool, can_collect: bool)
 
+@export_group("Movement")
 @export_range(1.0, 30.0) var walk_speed: float = 7.5
 @export_range(1.0, 40.0) var run_speed: float = 12.5
 @export_range(1.0, 30.0) var jump_velocity: float = 7.8
 @export_range(0.1, 80.0) var ground_acceleration: float = 52.0
 @export_range(0.1, 40.0) var air_acceleration: float = 16.0
 @export_range(0.1, 60.0) var friction: float = 24.0
+
+@export_group("Look And Aim")
 @export_range(0.01, 1.0) var mouse_sensitivity: float = 0.25
 @export_range(60.0, 120.0) var fov: float = 90.0
 @export_range(45.0, 100.0) var aim_fov: float = 60.0
@@ -42,6 +45,8 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.02, 0.25) var aim_sight_depth: float = 0.065
 @export var aim_weapon_position: Vector3 = Vector3(0.0, -0.22, -0.4)
 @export var aim_view_offset: Vector3 = Vector3.ZERO
+
+@export_group("Jump")
 @export var double_jump_enabled: bool = true
 @export_range(0, 8) var max_air_jumps: int = 1
 @export var wall_jump_enabled: bool = true
@@ -55,6 +60,8 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.0, 1.0) var wall_jump_coyote_time: float = 0.12
 @export_range(0.0, 1.0) var wall_jump_min_air_time: float = 0.05
 @export_range(0.0, 1.0) var wall_jump_camera_kick: float = 0.035
+
+@export_group("Identity And Network")
 @export var player_id: int = 1
 @export var display_name: String = "Player"
 @export var input_prefix: String = ""
@@ -63,11 +70,15 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.0, 5.0) var respawn_invulnerability_time: float = 1.0
 @export_range(1.0, 40.0) var network_interpolation_speed: float = 18.0
 @export_range(0.5, 20.0) var network_snap_distance: float = 6.0
+
+@export_group("Crouch")
 @export var crouch_enabled: bool = true
 @export_range(0.2, 2.0) var crouch_height_multiplier: float = 0.55
 @export_range(1.0, 20.0) var crouch_speed: float = 4.5
 @export_range(1.0, 30.0) var crouch_transition_speed: float = 12.0
 @export_range(0.0, 1.0) var crouch_camera_drop: float = 0.45
+
+@export_group("Camera Motion")
 @export var camera_motion_enabled: bool = true
 @export_range(0.0, 0.2) var idle_breath_amount: float = 0.018
 @export_range(0.1, 3.0) var idle_breath_frequency: float = 0.75
@@ -90,6 +101,8 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.0, 20.0) var run_fov_boost: float = 5.0
 @export_range(1.0, 30.0) var fov_transition_speed: float = 10.0
 @export_range(0.0, 0.2) var landing_camera_dip: float = 0.09
+
+@export_group("Weapon Motion")
 @export var weapon_motion_enabled: bool = true
 @export_range(0.0, 1.0) var weapon_sway_amount: float = 0.12
 @export_range(0.0, 1.0) var weapon_rotation_sway_amount: float = 0.085
@@ -104,6 +117,8 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export var weapon_hold_mode: WeaponHoldMode = WeaponHoldMode.DEFAULT
 @export var align_weapon_muzzle_to_crosshair: bool = false
 @export_range(-0.25, 0.25) var weapon_crosshair_lateral_offset: float = 0.0
+
+@export_group("Body Visual")
 @export var hide_body_for_local_player: bool = true
 @export var hide_third_person_weapon_for_local_player: bool = true
 @export_range(0.0, 0.18) var body_breath_amount: float = 0.025
@@ -113,6 +128,8 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.0, 1.0) var third_person_aim_offset: float = 0.16
 @export_range(0.0, 45.0) var leg_swing_degrees: float = 24.0
 @export_range(0.0, 45.0) var leg_jump_tuck_degrees: float = 18.0
+
+@export_group("Debug Camera")
 @export var debug_camera_enabled: bool = true
 @export_range(1.8, 6.0) var debug_third_person_distance: float = 2.75
 @export var debug_third_person_shoulder_offset: Vector3 = Vector3(0.42, 0.12, 0.0)
@@ -338,6 +355,34 @@ func is_local_controlled() -> bool:
 
 func is_debug_first_person_view() -> bool:
 	return _is_debug_first_person_view()
+
+
+func get_camera_pitch_degrees() -> float:
+	return _pitch_degrees
+
+
+func get_aim_blend() -> float:
+	return _aim_blend
+
+
+func get_bob_blend() -> float:
+	return _bob_blend
+
+
+func get_landing_offset() -> float:
+	return _landing_offset
+
+
+func is_gameplay_input_enabled() -> bool:
+	return _gameplay_input_enabled
+
+
+func get_horizontal_speed() -> float:
+	return _get_horizontal_speed()
+
+
+func should_use_run_fov() -> bool:
+	return _should_use_run_fov()
 
 
 func is_alive() -> bool:

@@ -4,6 +4,10 @@ signal settings_changed
 signal performance_profile_changed(profile: int)
 
 const CONFIG_PATH: String = "user://player_settings.cfg"
+const SECTION_PROFILE: String = "profile"
+const SECTION_INPUT: String = "input"
+const SECTION_VIDEO: String = "video"
+const SECTION_VISUAL: String = "visual"
 const DEFAULT_ACCENT: Color = Color(1.0, 0.12, 0.05, 1.0)
 const DEFAULT_INTERNAL_RESOLUTION: Vector2i = Vector2i(640, 360)
 const ULTRA_LOW_INTERNAL_RESOLUTION: Vector2i = Vector2i(426, 240)
@@ -43,44 +47,76 @@ func load_settings() -> void:
 		_loaded = true
 		return
 
-	display_name = config.get_value("profile", "display_name", display_name)
-	accent_color = config.get_value("profile", "accent_color", accent_color)
-	crosshair_index = int(config.get_value("profile", "crosshair_index", crosshair_index))
-	crosshair_enabled = bool(config.get_value("profile", "crosshair_enabled", crosshair_enabled))
-	weapon_hold_mode = int(config.get_value("profile", "weapon_hold_mode", weapon_hold_mode))
-	mouse_sensitivity = float(config.get_value("input", "mouse_sensitivity", mouse_sensitivity))
-	fov = float(config.get_value("input", "fov", fov))
-	fullscreen = bool(config.get_value("video", "fullscreen", fullscreen))
-	vsync = bool(config.get_value("video", "vsync", vsync))
-	fps_cap = int(config.get_value("video", "fps_cap", fps_cap))
-	performance_profile = _sanitize_performance_profile(
-		int(config.get_value("video", "performance_profile", performance_profile))
-	)
-	psx_filter_enabled = bool(config.get_value("visual", "psx_filter_enabled", psx_filter_enabled))
-	lens_preset = int(config.get_value("visual", "lens_preset", lens_preset))
-	time_of_day_preset = int(config.get_value("visual", "time_of_day_preset", time_of_day_preset))
+	_load_profile_settings(config)
+	_load_input_settings(config)
+	_load_video_settings(config)
+	_load_visual_settings(config)
 	_loaded = true
 	settings_changed.emit()
 
 
+func _load_profile_settings(config: ConfigFile) -> void:
+	display_name = config.get_value(SECTION_PROFILE, "display_name", display_name)
+	accent_color = config.get_value(SECTION_PROFILE, "accent_color", accent_color)
+	crosshair_index = int(config.get_value(SECTION_PROFILE, "crosshair_index", crosshair_index))
+	crosshair_enabled = bool(config.get_value(SECTION_PROFILE, "crosshair_enabled", crosshair_enabled))
+	weapon_hold_mode = int(config.get_value(SECTION_PROFILE, "weapon_hold_mode", weapon_hold_mode))
+
+
+func _load_input_settings(config: ConfigFile) -> void:
+	mouse_sensitivity = float(config.get_value(SECTION_INPUT, "mouse_sensitivity", mouse_sensitivity))
+	fov = float(config.get_value(SECTION_INPUT, "fov", fov))
+
+
+func _load_video_settings(config: ConfigFile) -> void:
+	fullscreen = bool(config.get_value(SECTION_VIDEO, "fullscreen", fullscreen))
+	vsync = bool(config.get_value(SECTION_VIDEO, "vsync", vsync))
+	fps_cap = int(config.get_value(SECTION_VIDEO, "fps_cap", fps_cap))
+	performance_profile = _sanitize_performance_profile(
+		int(config.get_value(SECTION_VIDEO, "performance_profile", performance_profile))
+	)
+
+
+func _load_visual_settings(config: ConfigFile) -> void:
+	psx_filter_enabled = bool(config.get_value(SECTION_VISUAL, "psx_filter_enabled", psx_filter_enabled))
+	lens_preset = int(config.get_value(SECTION_VISUAL, "lens_preset", lens_preset))
+	time_of_day_preset = int(config.get_value(SECTION_VISUAL, "time_of_day_preset", time_of_day_preset))
+
+
 func save_settings() -> void:
 	var config := ConfigFile.new()
-	config.set_value("profile", "display_name", display_name.strip_edges())
-	config.set_value("profile", "accent_color", accent_color)
-	config.set_value("profile", "crosshair_index", crosshair_index)
-	config.set_value("profile", "crosshair_enabled", crosshair_enabled)
-	config.set_value("profile", "weapon_hold_mode", weapon_hold_mode)
-	config.set_value("input", "mouse_sensitivity", mouse_sensitivity)
-	config.set_value("input", "fov", fov)
-	config.set_value("video", "fullscreen", fullscreen)
-	config.set_value("video", "vsync", vsync)
-	config.set_value("video", "fps_cap", fps_cap)
-	config.set_value("video", "performance_profile", int(performance_profile))
-	config.set_value("visual", "psx_filter_enabled", psx_filter_enabled)
-	config.set_value("visual", "lens_preset", lens_preset)
-	config.set_value("visual", "time_of_day_preset", time_of_day_preset)
+	_save_profile_settings(config)
+	_save_input_settings(config)
+	_save_video_settings(config)
+	_save_visual_settings(config)
 	config.save(CONFIG_PATH)
 	settings_changed.emit()
+
+
+func _save_profile_settings(config: ConfigFile) -> void:
+	config.set_value(SECTION_PROFILE, "display_name", display_name.strip_edges())
+	config.set_value(SECTION_PROFILE, "accent_color", accent_color)
+	config.set_value(SECTION_PROFILE, "crosshair_index", crosshair_index)
+	config.set_value(SECTION_PROFILE, "crosshair_enabled", crosshair_enabled)
+	config.set_value(SECTION_PROFILE, "weapon_hold_mode", weapon_hold_mode)
+
+
+func _save_input_settings(config: ConfigFile) -> void:
+	config.set_value(SECTION_INPUT, "mouse_sensitivity", mouse_sensitivity)
+	config.set_value(SECTION_INPUT, "fov", fov)
+
+
+func _save_video_settings(config: ConfigFile) -> void:
+	config.set_value(SECTION_VIDEO, "fullscreen", fullscreen)
+	config.set_value(SECTION_VIDEO, "vsync", vsync)
+	config.set_value(SECTION_VIDEO, "fps_cap", fps_cap)
+	config.set_value(SECTION_VIDEO, "performance_profile", int(performance_profile))
+
+
+func _save_visual_settings(config: ConfigFile) -> void:
+	config.set_value(SECTION_VISUAL, "psx_filter_enabled", psx_filter_enabled)
+	config.set_value(SECTION_VISUAL, "lens_preset", lens_preset)
+	config.set_value(SECTION_VISUAL, "time_of_day_preset", time_of_day_preset)
 
 
 func get_accent_color() -> Color:
@@ -88,23 +124,28 @@ func get_accent_color() -> Color:
 
 
 func apply_display_settings() -> void:
-	var mode: int = (
-		DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen
-		else DisplayServer.WINDOW_MODE_WINDOWED
-	)
-	DisplayServer.window_set_mode(mode)
-	var vsync_mode: int = DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED
-	DisplayServer.window_set_vsync_mode(vsync_mode)
+	_apply_window_mode()
+	_apply_vsync()
 	_apply_internal_resolution()
 	Engine.max_fps = get_effective_fps_cap()
 	HudIcons.set_accent_color(accent_color)
 
 
+func _apply_window_mode() -> void:
+	var mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
+	DisplayServer.window_set_mode(mode)
+
+
+func _apply_vsync() -> void:
+	var vsync_mode: int = DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED
+	DisplayServer.window_set_vsync_mode(vsync_mode)
+
+
 func apply_to_player(player: PlayerController) -> void:
 	if player == null:
 		return
-	player.mouse_sensitivity = clampf(mouse_sensitivity, 0.02, 0.50)
-	player.fov = clampf(fov, 75.0, 110.0)
+	player.mouse_sensitivity = _get_safe_mouse_sensitivity()
+	player.fov = _get_safe_fov()
 	player.aim_fov = minf(player.aim_fov, player.fov - 15.0)
 	player.weapon_hold_mode = clampi(weapon_hold_mode, 0, PlayerController.WeaponHoldMode.size() - 1) as PlayerController.WeaponHoldMode
 	if not display_name.strip_edges().is_empty():
@@ -118,10 +159,7 @@ func apply_to_visual_director(visual_director: PSXVisualDirector) -> void:
 
 	var next_post_process_enabled: bool = true if is_low_power_profile() else psx_filter_enabled
 	var next_lens_preset: int = get_effective_lens_preset()
-	var needs_refresh: bool = (
-		visual_director.post_process_enabled != next_post_process_enabled
-		or int(visual_director.time_of_day_preset) != time_of_day_preset
-	)
+	var needs_refresh: bool = _visual_director_needs_refresh(visual_director, next_post_process_enabled)
 	var lens_changed: bool = int(visual_director.lens_preset) != next_lens_preset
 	var performance_changed: bool = int(visual_director.get("_performance_profile")) != int(performance_profile)
 
@@ -131,6 +169,13 @@ func apply_to_visual_director(visual_director: PSXVisualDirector) -> void:
 	visual_director.apply_lens_preset(next_lens_preset as PSXVisualDirector.LensPreset, false)
 	if needs_refresh or lens_changed or performance_changed:
 		visual_director.refresh_visual_style()
+
+
+func _visual_director_needs_refresh(visual_director: PSXVisualDirector, next_post_process_enabled: bool) -> bool:
+	return (
+		visual_director.post_process_enabled != next_post_process_enabled
+		or int(visual_director.time_of_day_preset) != time_of_day_preset
+	)
 
 
 func set_performance_profile(profile: int, apply_now: bool = true) -> void:
@@ -182,6 +227,14 @@ func is_low_power_profile() -> bool:
 
 func is_ultra_low_profile() -> bool:
 	return performance_profile == PerformanceProfile.ULTRA_LOW
+
+
+func _get_safe_mouse_sensitivity() -> float:
+	return clampf(mouse_sensitivity, 0.02, 0.50)
+
+
+func _get_safe_fov() -> float:
+	return clampf(fov, 75.0, 110.0)
 
 
 func _apply_internal_resolution() -> void:

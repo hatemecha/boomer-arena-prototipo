@@ -221,6 +221,7 @@ func bind_player(player: PlayerController) -> void:
 		push_error("HUD cannot bind a null player.")
 		return
 
+	_disconnect_player_signals()
 	_player = player
 	process_priority = maxi(player.process_priority + 1, 1)
 	_local_player_id = player.player_id
@@ -229,11 +230,7 @@ func bind_player(player: PlayerController) -> void:
 		push_error("HUD cannot bind because the player has no health component.")
 		return
 
-	player.health.health_changed.connect(_on_health_changed)
-	player.debug_stats_changed.connect(_on_debug_stats_changed)
-	player.active_weapon_changed.connect(_on_active_weapon_changed)
-	if not player.pickup_interaction_changed.is_connected(_on_pickup_interaction_changed):
-		player.pickup_interaction_changed.connect(_on_pickup_interaction_changed)
+	_connect_player_signals(player)
 	_on_active_weapon_changed(player.weapon)
 
 	if _active_weapon == null:
@@ -251,9 +248,7 @@ func bind_visual_director(visual_director: PSXVisualDirector) -> void:
 	if visual_director == null:
 		return
 
-	if _visual_director != null and _visual_director.lens_preset_changed.is_connected(_on_lens_preset_changed):
-		_visual_director.lens_preset_changed.disconnect(_on_lens_preset_changed)
-
+	_disconnect_visual_director_signals()
 	_visual_director = visual_director
 	if not _visual_director.lens_preset_changed.is_connected(_on_lens_preset_changed):
 		_visual_director.lens_preset_changed.connect(_on_lens_preset_changed)
@@ -265,18 +260,10 @@ func bind_match(match_manager: MatchManager, local_player_id: int) -> void:
 		push_error("HUD cannot bind a null match manager.")
 		return
 
+	_disconnect_match_signals()
 	_match_manager = match_manager
 	_local_player_id = local_player_id
-	if not _match_manager.score_changed.is_connected(_on_score_changed):
-		_match_manager.score_changed.connect(_on_score_changed)
-	if not _match_manager.match_finished.is_connected(_on_match_finished):
-		_match_manager.match_finished.connect(_on_match_finished)
-	if not _match_manager.time_changed.is_connected(_on_match_time_changed):
-		_match_manager.time_changed.connect(_on_match_time_changed)
-	if not _match_manager.kill_feed_event.is_connected(_on_kill_feed_event):
-		_match_manager.kill_feed_event.connect(_on_kill_feed_event)
-	if not _match_manager.match_started.is_connected(_on_match_started):
-		_match_manager.match_started.connect(_on_match_started)
+	_connect_match_signals(_match_manager)
 	_set_match_widgets_visible(_match_manager.match_running)
 	_refresh_score_label()
 	_refresh_match_objective()
@@ -287,24 +274,92 @@ func bind_music_stereo(music_stereo: MusicStereo) -> void:
 	if music_stereo == null:
 		return
 
-	if _music_stereo != null:
-		if _music_stereo.track_changed.is_connected(_on_music_track_changed):
-			_music_stereo.track_changed.disconnect(_on_music_track_changed)
-		if _music_stereo.proximity_changed.is_connected(_on_music_proximity_changed):
-			_music_stereo.proximity_changed.disconnect(_on_music_proximity_changed)
-		if _music_stereo.interaction_hint_changed.is_connected(_on_music_interaction_hint_changed):
-			_music_stereo.interaction_hint_changed.disconnect(_on_music_interaction_hint_changed)
-
+	_disconnect_music_stereo_signals()
 	_music_stereo = music_stereo
-	_music_stereo.track_changed.connect(_on_music_track_changed)
-	_music_stereo.proximity_changed.connect(_on_music_proximity_changed)
-	_music_stereo.interaction_hint_changed.connect(_on_music_interaction_hint_changed)
+	_connect_music_stereo_signals(_music_stereo)
 	_on_music_track_changed(
 		_music_stereo.get_current_title(),
 		_music_stereo.get_current_artist(),
 		_music_stereo.get_current_cover(),
 		_music_stereo.is_playing()
 	)
+
+
+func _connect_player_signals(player: PlayerController) -> void:
+	if not player.health.health_changed.is_connected(_on_health_changed):
+		player.health.health_changed.connect(_on_health_changed)
+	if not player.debug_stats_changed.is_connected(_on_debug_stats_changed):
+		player.debug_stats_changed.connect(_on_debug_stats_changed)
+	if not player.active_weapon_changed.is_connected(_on_active_weapon_changed):
+		player.active_weapon_changed.connect(_on_active_weapon_changed)
+	if not player.pickup_interaction_changed.is_connected(_on_pickup_interaction_changed):
+		player.pickup_interaction_changed.connect(_on_pickup_interaction_changed)
+
+
+func _disconnect_player_signals() -> void:
+	if _player == null:
+		return
+	if _player.health != null and _player.health.health_changed.is_connected(_on_health_changed):
+		_player.health.health_changed.disconnect(_on_health_changed)
+	if _player.debug_stats_changed.is_connected(_on_debug_stats_changed):
+		_player.debug_stats_changed.disconnect(_on_debug_stats_changed)
+	if _player.active_weapon_changed.is_connected(_on_active_weapon_changed):
+		_player.active_weapon_changed.disconnect(_on_active_weapon_changed)
+	if _player.pickup_interaction_changed.is_connected(_on_pickup_interaction_changed):
+		_player.pickup_interaction_changed.disconnect(_on_pickup_interaction_changed)
+
+
+func _disconnect_visual_director_signals() -> void:
+	if _visual_director != null and _visual_director.lens_preset_changed.is_connected(_on_lens_preset_changed):
+		_visual_director.lens_preset_changed.disconnect(_on_lens_preset_changed)
+
+
+func _connect_match_signals(match_manager: MatchManager) -> void:
+	if not match_manager.score_changed.is_connected(_on_score_changed):
+		match_manager.score_changed.connect(_on_score_changed)
+	if not match_manager.match_finished.is_connected(_on_match_finished):
+		match_manager.match_finished.connect(_on_match_finished)
+	if not match_manager.time_changed.is_connected(_on_match_time_changed):
+		match_manager.time_changed.connect(_on_match_time_changed)
+	if not match_manager.kill_feed_event.is_connected(_on_kill_feed_event):
+		match_manager.kill_feed_event.connect(_on_kill_feed_event)
+	if not match_manager.match_started.is_connected(_on_match_started):
+		match_manager.match_started.connect(_on_match_started)
+
+
+func _disconnect_match_signals() -> void:
+	if _match_manager == null:
+		return
+	if _match_manager.score_changed.is_connected(_on_score_changed):
+		_match_manager.score_changed.disconnect(_on_score_changed)
+	if _match_manager.match_finished.is_connected(_on_match_finished):
+		_match_manager.match_finished.disconnect(_on_match_finished)
+	if _match_manager.time_changed.is_connected(_on_match_time_changed):
+		_match_manager.time_changed.disconnect(_on_match_time_changed)
+	if _match_manager.kill_feed_event.is_connected(_on_kill_feed_event):
+		_match_manager.kill_feed_event.disconnect(_on_kill_feed_event)
+	if _match_manager.match_started.is_connected(_on_match_started):
+		_match_manager.match_started.disconnect(_on_match_started)
+
+
+func _connect_music_stereo_signals(music_stereo: MusicStereo) -> void:
+	if not music_stereo.track_changed.is_connected(_on_music_track_changed):
+		music_stereo.track_changed.connect(_on_music_track_changed)
+	if not music_stereo.proximity_changed.is_connected(_on_music_proximity_changed):
+		music_stereo.proximity_changed.connect(_on_music_proximity_changed)
+	if not music_stereo.interaction_hint_changed.is_connected(_on_music_interaction_hint_changed):
+		music_stereo.interaction_hint_changed.connect(_on_music_interaction_hint_changed)
+
+
+func _disconnect_music_stereo_signals() -> void:
+	if _music_stereo == null:
+		return
+	if _music_stereo.track_changed.is_connected(_on_music_track_changed):
+		_music_stereo.track_changed.disconnect(_on_music_track_changed)
+	if _music_stereo.proximity_changed.is_connected(_on_music_proximity_changed):
+		_music_stereo.proximity_changed.disconnect(_on_music_proximity_changed)
+	if _music_stereo.interaction_hint_changed.is_connected(_on_music_interaction_hint_changed):
+		_music_stereo.interaction_hint_changed.disconnect(_on_music_interaction_hint_changed)
 
 
 func _process(delta: float) -> void:
