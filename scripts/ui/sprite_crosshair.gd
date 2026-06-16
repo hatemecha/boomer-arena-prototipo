@@ -5,6 +5,8 @@ const CROSSHAIR_ATLAS: Texture2D = preload("res://assets/textures/ui/crosshairs/
 const INVERT_SHADER: Shader = preload("res://shaders/crosshair_invert.gdshader")
 const GRID_COLUMNS: int = 8
 const GRID_ROWS: int = 6
+const STYLE_COUNT: int = GRID_COLUMNS * GRID_ROWS
+const MAX_STYLE_INDEX: int = STYLE_COUNT - 1
 const CELL_SIZE: int = 16
 const DISPLAY_SCALE: int = 2
 const DISPLAY_SIZE: float = float(CELL_SIZE * DISPLAY_SCALE)
@@ -24,7 +26,7 @@ func _ready() -> void:
 
 
 func set_crosshair_index(index: int) -> void:
-	_crosshair_index = clampi(index, 0, GRID_COLUMNS * GRID_ROWS - 1)
+	_crosshair_index = clampi(index, 0, MAX_STYLE_INDEX)
 	_update_atlas_region()
 
 
