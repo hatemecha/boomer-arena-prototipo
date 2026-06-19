@@ -18,6 +18,7 @@ const BULLET_SCENE: PackedScene = preload("res://assets/models/vfx/low_poly_bull
 @onready var muzzle_flash: Node = get_node_or_null("MuzzleFlash")
 
 var bullet_bounce_enabled: bool = true
+static var _global_next_shot_id: int = 1
 
 # Pool compartido entre todas las armas hitscan: las balas se reutilizan
 # (ocultar/mostrar) en lugar de instanciar y liberar una por disparo.
@@ -49,8 +50,10 @@ func try_fire(camera: Camera3D) -> bool:
 	if not did_fire:
 		return false
 
+	var shot_id: int = _global_next_shot_id
+	_global_next_shot_id += 1
 	for _pellet_index in range(pellet_count):
-		_perform_hitscan(camera)
+		_perform_hitscan(camera, shot_id)
 	_show_muzzle_flash()
 	fired.emit(self)
 	return true
@@ -98,7 +101,7 @@ func warmup_runtime_effects(scene_root: Node, bullet_pool_size: int = 8, decal_p
 	BulletImpactVFX.warmup(scene_root, decal_pool_size)
 
 
-func _perform_hitscan(camera: Camera3D) -> void:
+func _perform_hitscan(camera: Camera3D, shot_id: int) -> void:
 	var effective_spread_degrees: float = spread_degrees
 	if is_aiming:
 		effective_spread_degrees *= aim_spread_multiplier
@@ -127,8 +130,8 @@ func _perform_hitscan(camera: Camera3D) -> void:
 		if damage_target is PlayerController:
 			var victim: PlayerController = damage_target as PlayerController
 			var attacker_player_id: int = _get_owner_player_id()
-			if not _request_network_player_damage(victim.player_id, damage, attacker_player_id):
-				victim.apply_damage(damage, attacker_player_id)
+			if not _request_network_player_damage(victim.player_id, damage, attacker_player_id, shot_id):
+				victim.apply_damage(damage, attacker_player_id, shot_id)
 		else:
 			damage_target.apply_damage(damage)
 
@@ -388,11 +391,11 @@ func _get_owner_player_id() -> int:
 	return 0
 
 
-func _request_network_player_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> bool:
+func _request_network_player_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int) -> bool:
 	var scene_root: Node = get_tree().current_scene
 	if scene_root == null or not scene_root.has_method("request_network_damage"):
 		return false
-	return bool(scene_root.call("request_network_damage", victim_player_id, amount, attacker_player_id))
+	return bool(scene_root.call("request_network_damage", victim_player_id, amount, attacker_player_id, shot_id))
 
 
 func _find_damage_target(collider: Object) -> Object:

@@ -26,6 +26,7 @@ var _third_person_weapon_models: Array[Node3D] = []
 var _limb_bone_indices: Dictionary = {}
 var _limb_rest_rotations: Dictionary = {}
 var _body_motion_time: float = 0.0
+var _damage_flash_material: StandardMaterial3D
 
 
 func setup(player) -> void:
@@ -35,6 +36,27 @@ func setup(player) -> void:
 
 func reset_motion() -> void:
 	_body_motion_time = 0.0
+
+
+func set_damage_flash(node: Node, enabled: bool) -> void:
+	if node == null:
+		return
+	if enabled and _damage_flash_material == null:
+		_damage_flash_material = StandardMaterial3D.new()
+		_damage_flash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_damage_flash_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_damage_flash_material.albedo_color = Color(1.0, 0.02, 0.01, 0.62)
+		_damage_flash_material.emission_enabled = true
+		_damage_flash_material.emission = Color(1.0, 0.01, 0.0)
+		_damage_flash_material.emission_energy_multiplier = 1.35
+	_apply_damage_overlay_recursive(node, _damage_flash_material if enabled else null)
+
+
+func _apply_damage_overlay_recursive(node: Node, overlay: Material) -> void:
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).material_overlay = overlay
+	for child in node.get_children():
+		_apply_damage_overlay_recursive(child, overlay)
 
 
 func update_body_visibility(player) -> void:

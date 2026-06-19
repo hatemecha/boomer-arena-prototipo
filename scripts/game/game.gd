@@ -141,14 +141,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 #region API publica de red (armas/pickups llaman aca)
-func request_network_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> bool:
+func request_network_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int = 0) -> bool:
 	if not _is_networked() or multiplayer.is_server():
 		return false
 	if victim_player_id <= 0 or attacker_player_id <= 0 or amount <= 0:
 		push_warning("Ignoring invalid network damage request.")
 		return true
 
-	_server_request_damage.rpc_id(1, victim_player_id, amount, attacker_player_id)
+	_server_request_damage.rpc_id(1, victim_player_id, amount, attacker_player_id, shot_id)
 	return true
 
 
@@ -1219,7 +1219,7 @@ func _sync_player_health_to_peers(player: PlayerController) -> void:
 	)
 
 
-func _apply_player_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> void:
+func _apply_player_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int = 0) -> void:
 	if amount <= 0:
 		push_warning("Damage amount must be greater than zero.")
 		return
@@ -1228,7 +1228,7 @@ func _apply_player_damage(victim_player_id: int, amount: int, attacker_player_id
 	if victim == null:
 		push_warning("Cannot apply damage because player %d does not exist." % victim_player_id)
 		return
-	victim.apply_damage(amount, attacker_player_id)
+	victim.apply_damage(amount, attacker_player_id, shot_id)
 
 
 func _apply_player_pickup(pickup_id: int, player_id: int, requesting_peer_id: int = 0) -> void:
@@ -1268,9 +1268,31 @@ func _on_music_stereo_spawned(music_stereo: MusicStereo) -> void:
 			hud.bind_music_stereo(music_stereo)
 
 
-func _on_player_damaged(_amount: int, player: PlayerController) -> void:
+func _on_player_damaged(amount: int, attacker_player_id: int, shot_id: int, player: PlayerController) -> void:
+	if attacker_player_id > 0 and attacker_player_id != player.player_id:
+		_deliver_damage_feedback(attacker_player_id, player.player_id, amount, shot_id)
 	if _is_networked() and multiplayer.is_server():
 		_sync_player_health_to_peers(player)
+
+
+func _deliver_damage_feedback(attacker_player_id: int, victim_player_id: int, amount: int, shot_id: int) -> void:
+	var attacker: PlayerController = _get_player_by_player_id(attacker_player_id)
+	if attacker == null:
+		return
+	var attacker_peer_id: int = _get_peer_id_for_player(attacker)
+	if _is_networked() and multiplayer.is_server() and attacker_peer_id > 1:
+		_network_confirm_damage.rpc_id(attacker_peer_id, victim_player_id, amount, shot_id)
+		return
+	_show_local_damage_feedback(victim_player_id, amount, shot_id)
+
+
+func _show_local_damage_feedback(victim_player_id: int, amount: int, shot_id: int) -> void:
+	var victim: PlayerController = _get_player_by_player_id(victim_player_id)
+	if victim == null or amount <= 0:
+		return
+	for hud in _huds:
+		if hud != null and is_instance_valid(hud):
+			hud.show_damage_feedback(victim, amount, shot_id)
 
 
 func _on_player_died(player: PlayerController) -> void:
@@ -1292,7 +1314,7 @@ func _on_player_died(player: PlayerController) -> void:
 		var corpse: Node3D = _spawn_corpse(player, killer_position)
 		_broadcast_corpse_spawn(player, killer_position)
 		if bool(death_context["has_killer"]):
-			_play_death_cinematic(player.global_position, match_ended_from_kill, corpse, killer_id)
+			_play_death_cinematic(player.global_position, match_ended_from_kill, corpse, killer_id, killer_position)
 		if match_ended_from_kill:
 			_queue_match_result_overlay(killer_id if killer_id > 0 else _pending_match_result_winner_id)
 
@@ -1425,18 +1447,18 @@ func _match_end_uses_death_cinematic() -> bool:
 	return _pending_death_cinematic_match_end
 
 
-func _play_death_cinematic(action_position: Vector3, is_match_ending: bool, follow_target: Node3D = null, winner_id: int = -1) -> void:
+func _play_death_cinematic(victim_position: Vector3, is_match_ending: bool, follow_target: Node3D = null, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
 	if _is_networked() and multiplayer.is_server():
-		_network_play_death_cinematic.rpc(action_position, is_match_ending, winner_id)
+		_network_play_death_cinematic.rpc(victim_position, is_match_ending, killer_id, killer_position)
 	else:
-		_run_death_cinematic(action_position, is_match_ending, follow_target, winner_id)
+		_run_death_cinematic(victim_position, is_match_ending, follow_target, killer_id, killer_position)
 
 
-func _run_death_cinematic(action_position: Vector3, is_match_ending: bool, follow_target: Node3D = null, winner_id: int = -1) -> void:
+func _run_death_cinematic(victim_position: Vector3, is_match_ending: bool, follow_target: Node3D = null, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
 	if is_match_ending:
 		_pending_death_cinematic_match_end = true
-		if winner_id > 0:
-			_pending_match_result_winner_id = winner_id
+		if killer_id > 0:
+			_pending_match_result_winner_id = killer_id
 	var corpse_target: Node3D = follow_target
 	if corpse_target == null and _latest_death_corpse != null and is_instance_valid(_latest_death_corpse):
 		corpse_target = _latest_death_corpse
@@ -1450,7 +1472,7 @@ func _run_death_cinematic(action_position: Vector3, is_match_ending: bool, follo
 		if not _death_cinematic.finished.is_connected(_on_death_cinematic_finished_show_result):
 			_death_cinematic.finished.connect(_on_death_cinematic_finished_show_result, CONNECT_ONE_SHOT)
 	if _death_cinematic.has_method("play"):
-		_death_cinematic.call("play", action_position, is_match_ending, corpse_target)
+		_death_cinematic.call("play", victim_position, is_match_ending, corpse_target, killer_id, killer_position, _get_player_by_player_id(killer_id))
 
 
 func _queue_match_result_overlay(winner_id: int) -> void:
@@ -1928,8 +1950,8 @@ func _network_match_finished(winner_id: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _network_play_death_cinematic(action_position: Vector3, is_match_ending: bool, winner_id: int = -1) -> void:
-	_run_death_cinematic(action_position, is_match_ending, null, winner_id)
+func _network_play_death_cinematic(victim_position: Vector3, is_match_ending: bool, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
+	_run_death_cinematic(victim_position, is_match_ending, null, killer_id, killer_position)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -2024,7 +2046,7 @@ func _server_receive_player_state(
 
 
 @rpc("any_peer", "reliable")
-func _server_request_damage(victim_player_id: int, amount: int, attacker_player_id: int) -> void:
+func _server_request_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int = 0) -> void:
 	if not multiplayer.is_server():
 		return
 
@@ -2033,7 +2055,12 @@ func _server_request_damage(victim_player_id: int, amount: int, attacker_player_
 	if expected_attacker_id <= 0 or expected_attacker_id != attacker_player_id:
 		push_warning("Rejected damage request from peer %d." % sender_peer_id)
 		return
-	_apply_player_damage(victim_player_id, amount, attacker_player_id)
+	_apply_player_damage(victim_player_id, amount, attacker_player_id, shot_id)
+
+
+@rpc("authority", "reliable")
+func _network_confirm_damage(victim_player_id: int, amount: int, shot_id: int) -> void:
+	_show_local_damage_feedback(victim_player_id, amount, shot_id)
 
 
 @rpc("any_peer", "reliable")

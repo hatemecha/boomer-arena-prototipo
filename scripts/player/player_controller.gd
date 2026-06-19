@@ -21,7 +21,7 @@ const _DEBUG_CAMERA_PRIORITY_INACTIVE := 0
 
 signal debug_stats_changed(world_position: Vector3, speed: float)
 signal active_weapon_changed(weapon: WeaponBase)
-signal damaged(amount: int)
+signal damaged(amount: int, attacker_player_id: int, shot_id: int)
 signal died
 signal respawned
 signal weapon_fired(weapon_name: String)
@@ -226,6 +226,7 @@ const _KILL_CAM_PRIORITY: int = 20
 const _KILL_CAM_DURATION: float = 1.5
 var _kill_cam_active: bool = false
 var respawn_generation: int = 0
+var _damage_flash_token: int = 0
 var _third_person_camera_initialized: bool = false
 var _third_person_camera_position: Vector3 = Vector3.ZERO
 var _motion_defaults_cached: bool = false
@@ -504,7 +505,7 @@ func get_active_weapon_index() -> int:
 	return _active_weapon_index
 
 
-func apply_damage(amount: int, attacker_player_id: int = 0) -> void:
+func apply_damage(amount: int, attacker_player_id: int = 0, shot_id: int = 0) -> void:
 	if _is_invulnerable:
 		return
 	var health_before_damage: int = health.current_health
@@ -512,7 +513,8 @@ func apply_damage(amount: int, attacker_player_id: int = 0) -> void:
 	health.apply_damage(amount)
 	var damage_taken: int = max(health_before_damage - health.current_health, 0)
 	if damage_taken > 0:
-		damaged.emit(damage_taken)
+		damaged.emit(damage_taken, attacker_player_id, shot_id)
+		_flash_damage_visual()
 	if not health.is_dead:
 		_shake_camera(0.09, 0.14)
 
@@ -641,6 +643,7 @@ func apply_network_health(
 ) -> void:
 	if health == null:
 		return
+	var previous_health: int = health.current_health
 	if network_respawn_generation >= 0 and network_respawn_generation < respawn_generation:
 		return
 	if (
@@ -658,6 +661,19 @@ func apply_network_health(
 	if _is_dead != is_dead_state:
 		set_dead(is_dead_state)
 	health.health_changed.emit(health.current_health, health.max_health)
+	if health.current_health < previous_health:
+		_flash_damage_visual()
+
+
+func _flash_damage_visual() -> void:
+	if body_visual == null:
+		return
+	_damage_flash_token += 1
+	var flash_token: int = _damage_flash_token
+	_body_visual_controller.set_damage_flash(body_visual, true)
+	await get_tree().create_timer(0.10, false).timeout
+	if flash_token == _damage_flash_token:
+		_body_visual_controller.set_damage_flash(body_visual, false)
 
 
 func apply_network_combat_state(active_weapon_index: int, is_aiming_state: bool) -> void:

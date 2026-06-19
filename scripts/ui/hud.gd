@@ -31,6 +31,8 @@ const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.
 @onready var speed_label: Label = get_node_or_null("Stats/SpeedRow/SpeedLabel") as Label
 @onready var crosshair: Control = get_node_or_null("Crosshair") as Control
 @onready var aim_dot: ColorRect = get_node_or_null("AimDot") as ColorRect
+@onready var hit_marker: HitMarker = get_node_or_null("HitMarker") as HitMarker
+@onready var damage_popup_layer: Control = get_node_or_null("DamagePopupLayer") as Control
 @onready var pickup_interaction_panel: Control = get_node_or_null("PickupInteractionPanel") as Control
 @onready var pickup_interaction_label: Label = get_node_or_null("PickupInteractionPanel/PromptLabel") as Label
 @onready var pickup_interaction_track: ColorRect = get_node_or_null("PickupInteractionPanel/Track") as ColorRect
@@ -85,6 +87,9 @@ const HEALTH_WARN_RATIO: float = 0.3
 const DEBUG_LABEL_REFRESH_INTERVAL: float = 0.20
 const DEBUG_LABEL_REFRESH_INTERVAL_LOW: float = 0.35
 const DEBUG_LABEL_REFRESH_INTERVAL_ULTRA_LOW: float = 0.50
+const DAMAGE_POPUP_LIFETIME: float = 0.70
+const DAMAGE_POPUP_RISE_PX: float = 22.0
+const DAMAGE_POPUP_MAX_COUNT: int = 8
 
 var _player: PlayerController
 var _visual_director: PSXVisualDirector
@@ -118,6 +123,7 @@ var _debug_label_refresh_interval: float = DEBUG_LABEL_REFRESH_INTERVAL
 var _base_hud_motion_enabled: bool = true
 var _base_hud_move_sway_px: float = 0.0
 var _base_hud_look_sway_px: float = 0.0
+var _damage_popups: Array[Dictionary] = []
 const MAX_KILL_FEED_ENTRIES: int = 5
 const KILL_FEED_LIFETIME: float = 4.0
 
@@ -380,6 +386,85 @@ func _process(delta: float) -> void:
 			_last_crosshair_aiming = is_aiming_now
 			crosshair.call("set_aiming", is_aiming_now)
 	_update_hud_motion(delta)
+	_update_damage_popups(delta)
+
+
+func show_damage_feedback(victim: PlayerController, amount: int, shot_id: int) -> void:
+	if victim == null or amount <= 0:
+		return
+	if hit_marker != null and _crosshair_enabled:
+		hit_marker.trigger()
+
+	for popup in _damage_popups:
+		if int(popup.get("shot_id", -1)) == shot_id and popup.get("victim") == victim:
+			popup["damage"] = int(popup.get("damage", 0)) + amount
+			popup["age"] = 0.0
+			var existing_label: Label = popup.get("label") as Label
+			_set_label_text(existing_label, "-%d" % int(popup["damage"]))
+			return
+
+	if damage_popup_layer == null:
+		return
+	if _damage_popups.size() >= DAMAGE_POPUP_MAX_COUNT:
+		_remove_damage_popup(0)
+
+	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.text = "-%d" % amount
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_color", HudIcons.HUD_WARN_TINT)
+	label.add_theme_color_override("font_outline_color", Color(0.05, 0.01, 0.0, 0.95))
+	label.add_theme_constant_override("outline_size", 3)
+	label.size = Vector2(72.0, 30.0)
+	damage_popup_layer.add_child(label)
+	_damage_popups.append({
+		"label": label,
+		"victim": victim,
+		"damage": amount,
+		"shot_id": shot_id,
+		"age": 0.0,
+		"jitter": float((shot_id * 17) % 21 - 10),
+	})
+
+
+func _update_damage_popups(delta: float) -> void:
+	if _damage_popups.is_empty():
+		return
+	for popup_index in range(_damage_popups.size() - 1, -1, -1):
+		var popup: Dictionary = _damage_popups[popup_index]
+		var label: Label = popup.get("label") as Label
+		var victim: PlayerController = popup.get("victim") as PlayerController
+		var age: float = float(popup.get("age", 0.0)) + delta
+		popup["age"] = age
+		if age >= DAMAGE_POPUP_LIFETIME or label == null or not is_instance_valid(label) or victim == null or not is_instance_valid(victim):
+			_remove_damage_popup(popup_index)
+			continue
+
+		var camera: Camera3D = _player.camera if _player != null else null
+		var anchor_position: Vector3 = victim.global_position + Vector3.UP * 1.75
+		if camera == null or camera.is_position_behind(anchor_position):
+			label.visible = false
+			continue
+		var screen_position: Vector2 = camera.unproject_position(anchor_position)
+		var viewport_size: Vector2 = get_viewport_rect().size
+		label.visible = Rect2(Vector2.ZERO, viewport_size).grow(36.0).has_point(screen_position)
+		if not label.visible:
+			continue
+		var progress: float = clampf(age / DAMAGE_POPUP_LIFETIME, 0.0, 1.0)
+		label.position = screen_position + Vector2(float(popup.get("jitter", 0.0)), -12.0 - DAMAGE_POPUP_RISE_PX * progress) - label.size * 0.5
+		label.modulate.a = 1.0 - smoothstep(0.55, 1.0, progress)
+
+
+func _remove_damage_popup(index: int) -> void:
+	if index < 0 or index >= _damage_popups.size():
+		return
+	var popup: Dictionary = _damage_popups[index]
+	var label: Label = popup.get("label") as Label
+	if label != null and is_instance_valid(label):
+		label.queue_free()
+	_damage_popups.remove_at(index)
 
 
 func set_debug_visible(value: bool) -> void:
