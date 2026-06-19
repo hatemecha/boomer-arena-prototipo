@@ -4,7 +4,9 @@ extends Node
 signal session_list_changed(sessions: Array)
 
 const DISCOVERY_PORT: int = 24501
+const PROTOCOL_ID: String = "boomer_arena_lan_v1"
 const BROADCAST_INTERVAL: float = 1.0
+const QUERY_INTERVAL: float = 1.5
 const SESSION_TIMEOUT: float = 3.5
 const MAX_PACKETS_PER_FRAME: int = 64
 const MAX_DRAIN_PACKETS_PER_FRAME: int = 256
@@ -14,6 +16,7 @@ const LOOPBACK_SESSION_PATH: String = "user://boomer_arena_lan_sessions.json"
 var _listen_udp: PacketPeerUDP
 var _send_udp: PacketPeerUDP
 var _broadcast_timer: float = 0.0
+var _query_timer: float = 0.0
 var _loopback_poll_timer: float = 0.0
 var _is_hosting: bool = false
 var _is_browsing: bool = false
@@ -41,7 +44,7 @@ func start_hosting(payload: Dictionary) -> bool:
 	_broadcast_timer = BROADCAST_INTERVAL
 	_host_session_id = _get_loopback_session_id(_host_payload)
 	_close_listen_socket()
-	if not _ensure_send_bound():
+	if not _ensure_listen_bound() or not _ensure_send_bound():
 		push_warning("LAN discovery could not open send socket for hosting.")
 		_is_hosting = false
 		set_process(false)
@@ -69,19 +72,26 @@ func start_browsing() -> bool:
 		return true
 
 	_is_browsing = true
+	if _is_hosting:
+		_remove_loopback_session()
 	_is_hosting = false
 	_host_payload.clear()
-	_close_send_socket()
 	_loopback_poll_timer = LOOPBACK_POLL_INTERVAL
+	_query_timer = QUERY_INTERVAL
 	_merge_loopback_sessions()
 
-	if not _ensure_listen_bound():
-		push_warning("LAN discovery could not bind port %d for browsing." % DISCOVERY_PORT)
-		_is_browsing = false
-		set_process(false)
-		return false
+	if not _ensure_listen_bound() or not _ensure_send_bound():
+		if _sessions.is_empty():
+			push_warning("LAN discovery could not bind port %d for browsing." % DISCOVERY_PORT)
+			_is_browsing = false
+			set_process(false)
+			return false
+		# Another local game instance can own the discovery port. Its loopback
+		# announcement is still enough to offer that session without manual setup.
+		_close_listen_socket(false)
 	if _sessions.is_empty():
 		session_list_changed.emit([])
+	_send_query()
 	return true
 
 
@@ -90,6 +100,7 @@ func refresh_browse() -> void:
 		return
 	_merge_loopback_sessions()
 	_expire_sessions()
+	_send_query()
 
 
 func stop_all() -> void:
@@ -129,6 +140,10 @@ func _process(delta: float) -> void:
 	_poll_packets()
 	_expire_sessions()
 	if _is_browsing:
+		_query_timer += delta
+		if _query_timer >= QUERY_INTERVAL:
+			_query_timer = 0.0
+			_send_query()
 		_loopback_poll_timer += delta
 		if _loopback_poll_timer >= LOOPBACK_POLL_INTERVAL:
 			_loopback_poll_timer = 0.0
@@ -179,19 +194,49 @@ func _send_broadcast() -> void:
 		return
 
 	var payload: Dictionary = _host_payload.duplicate(true)
+	payload["protocol"] = PROTOCOL_ID
+	payload["type"] = "announce"
 	payload["timestamp"] = Time.get_unix_time_from_system()
 	_publish_loopback_session(payload)
-	var json_text: String = JSON.stringify(payload)
-	var packet: PackedByteArray = json_text.to_utf8_buffer()
+	_send_to_discovery_targets(payload)
 
-	var targets: PackedStringArray = PackedStringArray(["255.255.255.255"])
-	for target in targets:
+
+func _send_query() -> void:
+	if not _is_browsing:
+		return
+	_send_to_discovery_targets({
+		"protocol": PROTOCOL_ID,
+		"type": "query",
+	})
+
+
+func _send_to_discovery_targets(payload: Dictionary) -> void:
+	if _send_udp == null:
+		return
+	if not _send_udp.is_bound() and not _ensure_send_bound():
+		return
+	var packet: PackedByteArray = JSON.stringify(payload).to_utf8_buffer()
+	for target in _get_broadcast_targets():
 		_send_udp.set_dest_address(target, DISCOVERY_PORT)
 		_send_udp.put_packet(packet)
 
 
+func _get_broadcast_targets() -> PackedStringArray:
+	var targets: PackedStringArray = PackedStringArray(["255.255.255.255"])
+	for address in IP.get_local_addresses():
+		if address.contains(":") or address.begins_with("127.") or address.begins_with("169.254."):
+			continue
+		var octets: PackedStringArray = address.split(".")
+		if octets.size() != 4:
+			continue
+		var subnet_broadcast: String = "%s.%s.%s.255" % [octets[0], octets[1], octets[2]]
+		if not targets.has(subnet_broadcast):
+			targets.append(subnet_broadcast)
+	return targets
+
+
 func _poll_packets() -> void:
-	if not _is_browsing or _listen_udp == null or not _listen_udp.is_bound():
+	if not (_is_browsing or _is_hosting) or _listen_udp == null or not _listen_udp.is_bound():
 		return
 
 	var available_count: int = _listen_udp.get_available_packet_count()
@@ -214,8 +259,25 @@ func _handle_packet(packet: PackedByteArray, sender_ip: String) -> void:
 		return
 
 	var data: Dictionary = json.data
+	if str(data.get("protocol", "")) == PROTOCOL_ID and str(data.get("type", "")) == "query":
+		if _is_hosting:
+			_send_announcement_to(sender_ip)
+		return
+	if not _is_browsing:
+		return
 	if _store_session(data, sender_ip):
 		session_list_changed.emit(get_sessions())
+
+
+func _send_announcement_to(address: String) -> void:
+	if address.is_empty() or _host_payload.is_empty():
+		return
+	var payload: Dictionary = _host_payload.duplicate(true)
+	payload["protocol"] = PROTOCOL_ID
+	payload["type"] = "announce"
+	payload["timestamp"] = Time.get_unix_time_from_system()
+	_send_udp.set_dest_address(address, DISCOVERY_PORT)
+	_send_udp.put_packet(JSON.stringify(payload).to_utf8_buffer())
 
 
 func _store_session(data: Dictionary, sender_ip: String) -> bool:

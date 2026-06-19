@@ -25,7 +25,15 @@ func _run() -> void:
 		"max_players": 2,
 	}
 	_expect(host.start_hosting(payload), "host opens its announcement socket")
-	_expect(browser.start_browsing(), "browser binds the discovery port")
+	_expect(browser.start_browsing(), "browser accepts a concurrent local host through loopback")
+	_expect(not browser.get_sessions().is_empty(), "concurrent local host appears without manual setup")
+	browser.stop_all()
+	# Preserve the fresh loopback entry but release the sockets. This reproduces
+	# the regression where a stored local session used to skip the UDP bind.
+	host.call("_close_listen_socket")
+	host.call("_close_send_socket")
+	host.set_process(false)
+	_expect(browser.start_browsing(), "browser starts with a stored loopback session")
 	var listen_udp: PacketPeerUDP = browser.get("_listen_udp") as PacketPeerUDP
 	_expect(listen_udp != null and listen_udp.is_bound(), "browser remains bound when a loopback session exists")
 
