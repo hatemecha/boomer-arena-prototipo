@@ -110,7 +110,7 @@ func _perform_hitscan(camera: Camera3D, shot_id: int) -> void:
 	var direction: Vector3 = _get_camera_forward_with_spread(camera, effective_spread_degrees)
 	var end_position: Vector3 = origin + direction * weapon_range
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, end_position)
-	query.collide_with_areas = true
+	query.collide_with_areas = false
 	query.collide_with_bodies = true
 	var owner_body: CollisionObject3D = _get_owner_body()
 	if owner_body != null:
@@ -140,7 +140,7 @@ func _perform_hitscan(camera: Camera3D, shot_id: int) -> void:
 	var should_bounce: bool = _should_bullet_bounce(hit, damage_target)
 	_debug_draw_shot_ray(origin, end_position, impact_position, true)
 	_spawn_bullet_tracer(origin, direction, impact_position, impact_normal, should_bounce)
-	_spawn_impact_decal(impact_position, impact_normal)
+	_spawn_impact_decal(impact_position, impact_normal, hit.get("collider") as Node3D)
 
 
 func _get_camera_forward_with_spread(camera: Camera3D, effective_spread_degrees: float) -> Vector3:
@@ -267,7 +267,7 @@ func _orient_bullet(bullet: Node3D, from_position: Vector3, forward_direction: V
 	bullet.look_at(from_position + direction, Vector3.UP)
 
 
-func _spawn_impact_decal(world_position: Vector3, surface_normal: Vector3) -> void:
+func _spawn_impact_decal(world_position: Vector3, surface_normal: Vector3, hit_object: Node3D) -> void:
 	if max_active_decals <= 0 or decal_lifetime <= 0.0:
 		return
 
@@ -275,7 +275,7 @@ func _spawn_impact_decal(world_position: Vector3, surface_normal: Vector3) -> vo
 	if scene_root == null:
 		return
 
-	BulletImpactVFX.spawn_decal(scene_root, world_position, surface_normal, decal_lifetime, max_active_decals)
+	BulletImpactVFX.spawn_decal(scene_root, world_position, surface_normal, decal_lifetime, max_active_decals, hit_object)
 
 
 func _should_bullet_bounce(hit: Dictionary, damage_target: Object) -> bool:

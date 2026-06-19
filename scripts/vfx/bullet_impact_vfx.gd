@@ -16,7 +16,8 @@ static func spawn_decal(
 	world_position: Vector3,
 	surface_normal: Vector3,
 	lifetime: float = 5.0,
-	max_decals: int = 64
+	max_decals: int = 64,
+	hit_object: Node3D = null
 ) -> void:
 	if scene_root == null or lifetime <= 0.0 or max_decals <= 0:
 		return
@@ -32,6 +33,8 @@ static func spawn_decal(
 	var decal: MeshInstance3D = _acquire_decal(scene_root)
 	if decal == null:
 		return
+	if hit_object != null and is_instance_valid(hit_object):
+		decal.reparent(hit_object, true)
 
 	var up_axis: Vector3 = Vector3.UP
 	if absf(normal.dot(up_axis)) > 0.92:
@@ -133,6 +136,12 @@ static func _release_decal(decal: MeshInstance3D) -> void:
 	decal.visible = false
 	_release_decal_material(decal.material_override as StandardMaterial3D)
 	decal.material_override = _get_decal_material()
+	var scene_root: Node = decal.get_tree().current_scene
+	if scene_root == null:
+		decal.queue_free()
+		return
+	if decal.get_parent() != scene_root:
+		decal.reparent(scene_root, false)
 	_decal_pool.append(decal)
 
 

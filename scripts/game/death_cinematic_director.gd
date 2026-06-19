@@ -6,15 +6,14 @@ signal finished
 const NORMAL_DURATION: float = 1.9
 const MATCH_END_DURATION: float = 2.35
 const SLOW_MO_SCALE: float = 0.28
-const CAMERA_DISTANCE: float = 4.2
-const CAMERA_HEIGHT: float = 1.25
+const CAMERA_BACK_DISTANCE: float = 2.8
+const CAMERA_SIDE_DISTANCE: float = 1.35
+const CAMERA_HEIGHT: float = 1.15
 const CAMERA_END_LIFT: float = 0.55
 const FOCUS_HEIGHT: float = 0.72
-const KILLER_FOCUS_WEIGHT: float = 0.68
-const MIN_CAMERA_DISTANCE: float = 1.15
+const MIN_CLEAR_DISTANCE: float = 0.35
 const COLLISION_MARGIN: float = 0.22
-const FOLLOW_SMOOTHING: float = 24.0
-const CAMERA_SMOOTHING: float = 18.0
+const CAMERA_SMOOTHING: float = 9.5
 
 var _arena: Node3D
 var _local_player: PlayerController
@@ -25,7 +24,6 @@ var _killer_target: Node3D
 var _fallback_position: Vector3 = Vector3.ZERO
 var _killer_position: Vector3 = Vector3.ZERO
 var _has_killer: bool = false
-var _smoothed_focus_position: Vector3 = Vector3.ZERO
 var _smoothed_camera_position: Vector3 = Vector3.ZERO
 var _camera_direction: Vector3 = Vector3.BACK
 var _camera_side: Vector3 = Vector3.RIGHT
@@ -67,13 +65,16 @@ func _play_async(victim_position: Vector3, is_match_ending: bool, follow_target:
 	_duration = MATCH_END_DURATION if is_match_ending else NORMAL_DURATION
 	_elapsed = 0.0
 	_fallback_position = victim_position
-	_killer_position = killer_position
 	_killer_target = killer_target
+	_killer_position = killer_position + Vector3.UP * 1.45
+	if killer_target is PlayerController and (killer_target as PlayerController).camera != null:
+		_killer_position = (killer_target as PlayerController).camera.global_position
+	elif killer_target != null and is_instance_valid(killer_target):
+		_killer_position = killer_target.global_position + Vector3.UP * 1.45
 	_has_killer = killer_id > 0
-	_smoothed_focus_position = _get_desired_focus_position(victim_position)
 	_follow_target = follow_target
 	_camera_direction = _choose_camera_direction(victim_position)
-	_camera_side = _choose_camera_side(_camera_direction)
+	_camera_side = _choose_camera_side(victim_position, _camera_direction)
 	Engine.time_scale = SLOW_MO_SCALE
 
 	if _local_player != null:
@@ -112,19 +113,15 @@ func _update_ragdoll_camera(delta: float, progress: float) -> void:
 	elif _local_player != null and is_instance_valid(_local_player) and _local_player.health.is_dead:
 		victim_position = _local_player.global_position
 
-	var desired_focus: Vector3 = _get_desired_focus_position(victim_position)
-	var follow_weight: float = 1.0 - exp(-FOLLOW_SMOOTHING * delta)
-	_smoothed_focus_position = _smoothed_focus_position.lerp(desired_focus, follow_weight)
-
 	var eased_progress: float = progress * progress * (3.0 - 2.0 * progress)
-	var orbit_direction: Vector3 = (_camera_direction + _camera_side * lerpf(-0.35, 0.28, eased_progress)).normalized()
-	var desired_camera_position: Vector3 = _smoothed_focus_position + orbit_direction * CAMERA_DISTANCE
-	desired_camera_position.y = victim_position.y + CAMERA_HEIGHT + eased_progress * CAMERA_END_LIFT
-	var camera_position: Vector3 = _solve_camera_collision(_smoothed_focus_position, desired_camera_position)
+	var look_target: Vector3 = _get_look_target(victim_position)
+	var desired_camera_position: Vector3 = _get_desired_camera_position(victim_position, eased_progress)
+	var camera_position: Vector3 = _solve_camera_collision(look_target, desired_camera_position)
 	var camera_weight: float = 1.0 - exp(-CAMERA_SMOOTHING * delta)
-	_smoothed_camera_position = _smoothed_camera_position.lerp(camera_position, camera_weight)
+	_smoothed_camera_position = _solve_camera_collision(look_target, _smoothed_camera_position.lerp(camera_position, camera_weight))
 	_cinematic_camera.global_position = _smoothed_camera_position
-	_cinematic_camera.look_at(_get_look_target(victim_position), Vector3.UP)
+	if _smoothed_camera_position.distance_squared_to(look_target) > 0.01:
+		_cinematic_camera.look_at(look_target, Vector3.UP)
 
 
 func _setup_topdown_camera() -> void:
@@ -141,30 +138,35 @@ func _setup_topdown_camera() -> void:
 	_cinematic_camera.top_level = true
 	_cinematic_camera.global_transform = start_transform
 	_cinematic_camera.current = true
-	_smoothed_camera_position = _cinematic_camera.global_position
-
-
-func _get_desired_focus_position(victim_position: Vector3) -> Vector3:
+	_smoothed_camera_position = _get_desired_camera_position(_fallback_position, 0.0) if _has_killer else _cinematic_camera.global_position
+	_cinematic_camera.global_position = _smoothed_camera_position
 	if _has_killer:
-		return victim_position.lerp(_get_killer_position(), KILLER_FOCUS_WEIGHT) + Vector3.UP * FOCUS_HEIGHT
-	return victim_position + Vector3.UP * FOCUS_HEIGHT
+		_cinematic_camera.look_at(_get_look_target(_fallback_position), Vector3.UP)
 
 
 func _get_look_target(victim_position: Vector3) -> Vector3:
+	return victim_position + Vector3.UP * FOCUS_HEIGHT
+
+
+func _get_desired_camera_position(victim_position: Vector3, progress: float) -> Vector3:
 	if _has_killer:
-		return _get_killer_position() + Vector3.UP * FOCUS_HEIGHT
-	return _smoothed_focus_position
+		var impact_position: Vector3 = _fallback_position + Vector3.UP * FOCUS_HEIGHT
+		var trajectory: Vector3 = impact_position - _killer_position
+		var travel_scale: float = maxf(trajectory.length() - MIN_CLEAR_DISTANCE, 0.0) / maxf(trajectory.length(), 0.001)
+		return _killer_position + trajectory * progress * travel_scale
 
-
-func _get_killer_position() -> Vector3:
-	if _killer_target != null and is_instance_valid(_killer_target):
-		return _killer_target.global_position
-	return _killer_position
+	var back_distance: float = CAMERA_BACK_DISTANCE + (1.0 - progress) * 0.45
+	var side_distance: float = lerpf(CAMERA_SIDE_DISTANCE * 0.55, CAMERA_SIDE_DISTANCE, progress)
+	var position: Vector3 = victim_position
+	position += _camera_direction * back_distance
+	position += _camera_side * side_distance
+	position.y += CAMERA_HEIGHT + progress * CAMERA_END_LIFT
+	return position
 
 
 func _choose_camera_direction(victim_position: Vector3) -> Vector3:
 	if _has_killer:
-		var killer_to_victim: Vector3 = victim_position - _get_killer_position()
+		var killer_to_victim: Vector3 = victim_position - _killer_position
 		killer_to_victim.y = 0.0
 		if killer_to_victim.length_squared() > 0.25:
 			return killer_to_victim.normalized()
@@ -178,11 +180,24 @@ func _choose_camera_direction(victim_position: Vector3) -> Vector3:
 	return fallback_direction.normalized()
 
 
-func _choose_camera_side(direction: Vector3) -> Vector3:
+func _choose_camera_side(victim_position: Vector3, direction: Vector3) -> Vector3:
 	var side: Vector3 = direction.cross(Vector3.UP)
 	if side.length_squared() <= 0.01:
 		return Vector3.RIGHT
-	return side.normalized()
+	side = side.normalized()
+	var look_target: Vector3 = _get_look_target(victim_position)
+	var left_score: float = _score_camera_side(victim_position, look_target, -side)
+	var right_score: float = _score_camera_side(victim_position, look_target, side)
+	return -side if left_score > right_score else side
+
+
+func _score_camera_side(victim_position: Vector3, look_target: Vector3, side: Vector3) -> float:
+	var desired_position: Vector3 = victim_position + _camera_direction * CAMERA_BACK_DISTANCE + side * CAMERA_SIDE_DISTANCE + Vector3.UP * CAMERA_HEIGHT
+	var solved_position: Vector3 = _solve_camera_collision(look_target, desired_position)
+	var desired_distance: float = look_target.distance_to(desired_position)
+	if desired_distance <= 0.01:
+		return 0.0
+	return look_target.distance_to(solved_position) / desired_distance
 
 
 func _solve_camera_collision(focus_position: Vector3, desired_position: Vector3) -> Vector3:
@@ -191,12 +206,12 @@ func _solve_camera_collision(focus_position: Vector3, desired_position: Vector3)
 
 	var focus_to_camera: Vector3 = desired_position - focus_position
 	var desired_distance: float = focus_to_camera.length()
-	if desired_distance <= MIN_CAMERA_DISTANCE:
+	if desired_distance <= MIN_CLEAR_DISTANCE:
 		return desired_position
 
 	var query := PhysicsRayQueryParameters3D.create(focus_position, desired_position)
 	query.exclude = _get_collision_exclusions()
-	query.collision_mask = 0xFFFFFFFF
+	query.collision_mask = _local_player.collision_mask
 	query.hit_from_inside = false
 
 	var hit: Dictionary = _local_player.get_world_3d().direct_space_state.intersect_ray(query)
@@ -205,11 +220,11 @@ func _solve_camera_collision(focus_position: Vector3, desired_position: Vector3)
 
 	var direction: Vector3 = focus_to_camera / desired_distance
 	var hit_position: Vector3 = hit.get("position", desired_position)
-	var corrected_distance: float = clampf(
-		focus_position.distance_to(hit_position) - COLLISION_MARGIN,
-		MIN_CAMERA_DISTANCE,
-		desired_distance
-	)
+	var hit_distance: float = focus_position.distance_to(hit_position)
+	var safe_distance: float = hit_distance - COLLISION_MARGIN
+	if safe_distance < MIN_CLEAR_DISTANCE:
+		safe_distance = maxf(hit_distance * 0.5, 0.05)
+	var corrected_distance: float = clampf(safe_distance, 0.05, desired_distance)
 	return focus_position + direction * corrected_distance
 
 
