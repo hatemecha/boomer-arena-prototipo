@@ -904,6 +904,10 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 			return null
 
 		player.name = _get_player_node_name(peer_id)
+		# Authority must be assigned before _ready(). Otherwise every freshly
+		# instanced player briefly looks local to the host (authority defaults to
+		# peer 1) and its camera steals the viewport when a client joins.
+		player.set_multiplayer_authority(peer_id)
 		add_child(player)
 		players.append(player)
 		player.damaged.connect(_on_player_damaged.bind(player))
