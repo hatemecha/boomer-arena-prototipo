@@ -6,9 +6,9 @@ signal active_map_changed(map_id: String, arena: Node3D)
 const MAP_TEST_ARENA: String = "test_arena"
 const MAP_DOOM_E1M1: String = "doom_e1m1"
 const DEFAULT_MAP_ID: String = MAP_DOOM_E1M1
-const MAP_SCENES: Dictionary = {
-	MAP_DOOM_E1M1: preload("res://scenes/maps/IronHangarArena.tscn"),
-	MAP_TEST_ARENA: preload("res://scenes/maps/TestArena.tscn"),
+const MAP_SCENE_PATHS: Dictionary = {
+	MAP_DOOM_E1M1: "res://scenes/maps/IronHangarArena.tscn",
+	MAP_TEST_ARENA: "res://scenes/maps/TestArena.tscn",
 }
 const MAP_LABELS: Dictionary = {
 	MAP_DOOM_E1M1: "IRON HANGAR",
@@ -68,13 +68,13 @@ func get_map_options() -> Array[Dictionary]:
 
 func sanitize_map_id(map_id: String) -> String:
 	var clean_id: String = map_id.strip_edges().to_lower()
-	if MAP_SCENES.has(clean_id):
+	if MAP_SCENE_PATHS.has(clean_id):
 		return clean_id
 	return DEFAULT_MAP_ID
 
 
 func get_map_scene(map_id: String) -> PackedScene:
-	return MAP_SCENES[sanitize_map_id(map_id)] as PackedScene
+	return load(MAP_SCENE_PATHS[sanitize_map_id(map_id)]) as PackedScene
 
 
 func get_map_label(map_id: String) -> String:

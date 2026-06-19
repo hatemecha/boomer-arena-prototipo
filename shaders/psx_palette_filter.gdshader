@@ -60,37 +60,31 @@ float soft_spot(vec2 uv, vec2 center, float radius, float softness) {
 	return 1.0 - smoothstep(radius, radius + softness, distance_to_center);
 }
 
-float get_aspect_mix() {
-	return mix(1.0, lens_aspect_ratio, 0.38);
-}
-
-vec2 to_distortion_space(vec2 screen_uv) {
+vec2 to_distortion_space(vec2 screen_uv, float aspect_mix) {
 	vec2 centered_uv = screen_uv * 2.0 - 1.0;
-	centered_uv.x *= get_aspect_mix();
+	centered_uv.x *= aspect_mix;
 	return centered_uv;
 }
 
-vec2 from_distortion_space(vec2 lens_uv) {
+vec2 from_distortion_space(vec2 lens_uv, float aspect_mix) {
 	vec2 centered_uv = lens_uv;
-	centered_uv.x /= get_aspect_mix();
+	centered_uv.x /= aspect_mix;
 	return centered_uv * 0.5 + vec2(0.5);
 }
 
-vec2 sample_barrel_distortion_uv(vec2 screen_uv) {
-	vec2 lens_uv = to_distortion_space(screen_uv);
-	float radius = length(lens_uv);
+vec2 sample_barrel_distortion_uv(vec2 lens_uv, float radius, float aspect_mix) {
 	float radius_squared = radius * radius;
 	float edge_mask = smoothstep(fisheye_center_flatness, 1.25, radius);
 	float distortion = 1.0 + fisheye_strength * radius_squared * edge_mask;
 	vec2 distorted_lens_uv = lens_uv / max(distortion, 0.0001);
 	distorted_lens_uv *= lens_zoom_compensation;
-	return from_distortion_space(distorted_lens_uv);
+	return from_distortion_space(distorted_lens_uv, aspect_mix);
 }
 
-vec2 chromatic_offset(vec2 lens_uv, float radius) {
+vec2 chromatic_offset(vec2 lens_uv, float radius, float aspect_mix) {
 	float chroma_mask = smoothstep(chromatic_edge_start, 1.25, radius);
 	vec2 offset = lens_uv * chromatic_aberration_strength * chroma_mask;
-	offset.x /= get_aspect_mix();
+	offset.x /= aspect_mix;
 	return offset;
 }
 
@@ -102,12 +96,13 @@ float film_grain(vec2 screen_position) {
 }
 
 void fragment() {
-	vec2 lens_uv = to_distortion_space(SCREEN_UV);
+	float aspect_mix = mix(1.0, lens_aspect_ratio, 0.38);
+	vec2 lens_uv = to_distortion_space(SCREEN_UV, aspect_mix);
 	float lens_radius = length(lens_uv);
-	vec2 distorted_uv = sample_barrel_distortion_uv(SCREEN_UV);
+	vec2 distorted_uv = sample_barrel_distortion_uv(lens_uv, lens_radius, aspect_mix);
 	distorted_uv = clamp(distorted_uv, vec2(0.001), vec2(0.999));
 
-	vec2 chroma_offset = chromatic_offset(lens_uv, lens_radius);
+	vec2 chroma_offset = chromatic_offset(lens_uv, lens_radius, aspect_mix);
 	float red_channel = texture(screen_texture, clamp(distorted_uv + chroma_offset, vec2(0.001), vec2(0.999))).r;
 	float green_channel = texture(screen_texture, distorted_uv).g;
 	float blue_channel = texture(screen_texture, clamp(distorted_uv - chroma_offset, vec2(0.001), vec2(0.999))).b;
@@ -127,20 +122,25 @@ void fragment() {
 	final_color *= 1.0 - vignette_mask * vignette_strength;
 
 	float scanline = sin(FRAGCOORD.y * 2.4) * 0.004;
-	float lens_dirt_mask = smoothstep(0.54, 1.18, lens_radius);
-	float lens_dirt = soft_spot(SCREEN_UV, vec2(0.18, 0.62), 0.045, 0.12);
-	lens_dirt += soft_spot(SCREEN_UV, vec2(0.78, 0.66), 0.035, 0.10);
-	lens_dirt += soft_spot(SCREEN_UV, vec2(0.88, 0.48), 0.018, 0.06);
-	lens_dirt *= lens_dirt_strength * lens_dirt_mask;
+	float lens_dirt = 0.0;
+	if (lens_dirt_strength > 0.0) {
+		float lens_dirt_mask = smoothstep(0.54, 1.18, lens_radius);
+		lens_dirt = soft_spot(SCREEN_UV, vec2(0.18, 0.62), 0.045, 0.12);
+		lens_dirt += soft_spot(SCREEN_UV, vec2(0.78, 0.66), 0.035, 0.10);
+		lens_dirt += soft_spot(SCREEN_UV, vec2(0.88, 0.48), 0.018, 0.06);
+		lens_dirt *= lens_dirt_strength * lens_dirt_mask;
+	}
 
 	final_color += vec3(scanline * 0.35 + film_grain(FRAGCOORD.xy) + lens_dirt * 0.08);
 
-	float circular_mask = smoothstep(
-		circular_mask_radius,
-		circular_mask_radius + max(circular_mask_softness, 0.001),
-		lens_radius
-	);
-	final_color = mix(final_color, vec3(0.0, 0.001, 0.004), circular_mask * circular_mask_strength);
+	if (circular_mask_strength > 0.0) {
+		float circular_mask = smoothstep(
+			circular_mask_radius,
+			circular_mask_radius + max(circular_mask_softness, 0.001),
+			lens_radius
+		);
+		final_color = mix(final_color, vec3(0.0, 0.001, 0.004), circular_mask * circular_mask_strength);
+	}
 
 	COLOR = vec4(clamp(final_color, vec3(0.0), vec3(1.0)), 1.0);
 }

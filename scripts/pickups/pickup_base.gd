@@ -177,7 +177,6 @@ func _on_body_exited(body: Node3D) -> void:
 
 
 func _update_hold_interaction(delta: float) -> void:
-	_sync_overlapping_players()
 	var candidate := _select_interacting_player()
 	var can_apply: bool = candidate != null and can_apply_to_player(candidate)
 	var is_holding: bool = can_apply and candidate.is_interact_pressed()
@@ -219,26 +218,6 @@ func _select_interacting_player() -> PlayerController:
 			return player
 
 	return null
-
-
-func _sync_overlapping_players() -> void:
-	var overlapping_players: Array[PlayerController] = []
-	for body in get_overlapping_bodies():
-		var player: PlayerController = body as PlayerController
-		if player == null:
-			continue
-		overlapping_players.append(player)
-		if not _near_players.has(player):
-			_near_players.append(player)
-
-	for index in range(_near_players.size() - 1, -1, -1):
-		var player: PlayerController = _near_players[index]
-		if player == null or not is_instance_valid(player) or not overlapping_players.has(player):
-			_near_players.remove_at(index)
-			if _active_player == player:
-				_clear_player_pickup_interaction(_active_player)
-				_active_player = null
-				_hold_progress = 0.0
 
 
 func _can_drive_pickup_hold(player: PlayerController) -> bool:
@@ -333,17 +312,10 @@ func _setup_pickup_outlines() -> void:
 func _apply_outlines_recursive(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance: MeshInstance3D = node as MeshInstance3D
-		if mesh_instance.mesh != null and mesh_instance.name != "PickupOutline":
-			var outline := MeshInstance3D.new()
-			outline.name = "PickupOutline"
-			outline.mesh = mesh_instance.mesh
-			outline.material_override = _outline_material
-			outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			mesh_instance.add_child(outline)
+		if mesh_instance.mesh != null:
+			mesh_instance.material_overlay = _outline_material
 
 	for child: Node in node.get_children():
-		if child.name == "PickupOutline":
-			continue
 		_apply_outlines_recursive(child)
 
 

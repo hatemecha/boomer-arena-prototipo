@@ -31,6 +31,10 @@ var _elapsed: float = 0.0
 var _duration: float = 0.0
 
 
+func _ready() -> void:
+	set_process(false)
+
+
 func setup(arena: Node3D) -> void:
 	_arena = arena
 

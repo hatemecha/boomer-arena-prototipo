@@ -9,19 +9,10 @@
 [ext_resource type="PackedScene" uid="uid://b2vu0m0g35oxl" path="res://assets/models/weapons/wild_west_guns/Shotguns/Rigged/Sawn-Off Shotgun.fbx" id="7_sawnoff"]
 [ext_resource type="PackedScene" uid="uid://boc0w1lbrumkn" path="res://assets/models/weapons/wild_west_guns/Rifles/Rigged/Repeater.fbx" id="8_repeater"]
 [ext_resource type="PackedScene" uid="uid://b7prcdw7ebatu" path="res://scenes/player/AmongUsPlayerModel.tscn" id="9_among_us"]
-[ext_resource type="Script" uid="uid://bd046eokvcnu2" path="res://addons/phantom_camera/scripts/phantom_camera_host/phantom_camera_host.gd" id="10_pcam_host"]
-[ext_resource type="Script" uid="uid://csjccrhj5wnx7" path="res://addons/phantom_camera/scripts/phantom_camera/phantom_camera_3d.gd" id="11_pcam_3d"]
-[ext_resource type="Script" uid="uid://8umksf8e80fw" path="res://addons/phantom_camera/scripts/resources/tween_resource.gd" id="12_pcam_tween"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.45
 height = 1.8
-
-[sub_resource type="Resource" id="Resource_debug_pcam_tween"]
-script = ExtResource("12_pcam_tween")
-duration = 0.2
-transition = 2
-ease = 1
 
 [node name="Player" type="CharacterBody3D" unique_id=541657603]
 script = ExtResource("1_player")
@@ -68,11 +59,6 @@ light_color = Color(0.56, 0.66, 0.78, 1)
 light_energy = 1.15
 light_indirect_energy = 0.0
 omni_range = 2.8
-
-[node name="PhantomCameraHost" type="Node" parent="CameraPivot/PlayerCamera" unique_id=1024298440]
-process_priority = 300
-process_physics_priority = 300
-script = ExtResource("10_pcam_host")
 
 [node name="SMGAimPose" type="Marker3D" parent="CameraPivot/PlayerCamera" unique_id=2062942031]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.264, -0.13)
@@ -174,51 +160,6 @@ transform = Transform3D(1.2, 0, 0, 0, 1.2, 0, 0, 0, 1.2, 0, -0.14, 0.03)
 [node name="MuzzleFlash" parent="CameraPivot/PlayerCamera/Repeater" unique_id=811399744 instance=ExtResource("5_muzzle_vfx")]
 transform = Transform3D(0.65, 0, 0, 0, 0.65, 0, 0, 0, 0.65, 0.01194495, 0.1765064, -0.6490283)
 spark_count = 10
-
-[node name="ThirdPersonBackDebugPCam" type="Node3D" parent="." unique_id=1711599558 node_paths=PackedStringArray("follow_target")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 1.67, 2.75)
-visible = false
-script = ExtResource("11_pcam_3d")
-follow_mode = 6
-follow_target = NodePath("../CameraPivot")
-tween_resource = SubResource("Resource_debug_pcam_tween")
-tween_on_load = false
-follow_offset = Vector3(0.42, 0.12, 0)
-follow_damping = true
-follow_distance = 2.75
-spring_length = 2.75
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
-
-[node name="ThirdPersonFrontDebugPCam" type="Node3D" parent="." unique_id=1329596751 node_paths=PackedStringArray("follow_target")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.42, 1.67, 2.75)
-visible = false
-script = ExtResource("11_pcam_3d")
-follow_mode = 6
-follow_target = NodePath("../CameraPivot")
-tween_resource = SubResource("Resource_debug_pcam_tween")
-tween_on_load = false
-follow_offset = Vector3(0.42, 0.12, 0)
-follow_damping = true
-follow_distance = 2.75
-spring_length = 2.75
-align_transform_with_view = Callable()
-align_position_with_view = Callable()
-align_rotation_with_view = Callable()
-
-[node name="KillCamPCam" type="Node3D" parent="." unique_id=1284861394]
-top_level = true
-visible = false
-script = ExtResource("11_pcam_3d")
-priority = 20
-follow_mode = 2
-tween_resource = SubResource("Resource_debug_pcam_tween")
-tween_on_load = false
-follow_offset = Vector3(0.35, 0.8, 0)
-follow_damping = true
-follow_distance = 3.2
-spring_length = 3.2
 
 [node name="PlayerHealth" type="Node" parent="." unique_id=756525158]
 unique_name_in_owner = true

@@ -23,12 +23,14 @@ var _menu_active: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process(false)
 	fov = menu_fov
 	current = false
 
 
 func set_menu_active(active: bool) -> void:
 	_menu_active = active
+	set_process(active)
 	current = active
 	if active:
 		_snap_to_orbit()

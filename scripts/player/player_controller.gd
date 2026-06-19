@@ -4,6 +4,7 @@ extends CharacterBody3D
 const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const PlayerWeaponMotionScript: GDScript = preload("res://scripts/player/player_weapon_motion.gd")
 const PlayerBodyVisualScript: GDScript = preload("res://scripts/player/player_body_visual.gd")
+const DEBUG_STATS_INTERVAL: float = 0.2
 
 enum DebugCameraMode {
 	FIRST_PERSON,
@@ -16,8 +17,6 @@ enum WeaponHoldMode {
 	DOOM,
 }
 
-const _DEBUG_CAMERA_PRIORITY_ACTIVE := 20
-const _DEBUG_CAMERA_PRIORITY_INACTIVE := 0
 
 signal debug_stats_changed(world_position: Vector3, speed: float)
 signal active_weapon_changed(weapon: WeaponBase)
@@ -142,7 +141,6 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/PlayerCamera
 @onready var _viewmodel_fill_light: OmniLight3D = $CameraPivot/PlayerCamera/ViewmodelFill
-@onready var _phantom_camera_host: PhantomCameraHost = $CameraPivot/PlayerCamera/PhantomCameraHost
 @onready var health: PlayerHealth = $PlayerHealth
 @onready var body_mesh: Node3D = $BodyMesh
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
@@ -219,12 +217,6 @@ var _prev_hud_sample_yaw: float = 0.0
 var _prev_hud_sample_pitch: float = 0.0
 var _body_visual_controller = PlayerBodyVisualScript.new()
 var _debug_camera_mode: DebugCameraMode = DebugCameraMode.FIRST_PERSON
-var _third_back_pcam: PhantomCamera3D
-var _third_front_pcam: PhantomCamera3D
-var _kill_cam_pcam: PhantomCamera3D
-const _KILL_CAM_PRIORITY: int = 20
-const _KILL_CAM_DURATION: float = 1.5
-var _kill_cam_active: bool = false
 var respawn_generation: int = 0
 var _damage_flash_token: int = 0
 var _third_person_camera_initialized: bool = false
@@ -246,6 +238,7 @@ var _default_weapon_rotation_sway_amount: float = 0.0
 var _default_weapon_movement_sway_amount: float = 0.0
 var _default_weapon_jump_drop: float = 0.0
 var _default_weapon_landing_kick: float = 0.0
+var _debug_stats_accumulator: float = 0.0
 
 
 #region Ciclo de vida e input
@@ -326,7 +319,10 @@ func _physics_process(delta: float) -> void:
 	_handle_movement(delta)
 	if _gameplay_input_enabled:
 		_handle_weapon_input()
-	debug_stats_changed.emit(global_position, Vector2(velocity.x, velocity.z).length())
+	_debug_stats_accumulator += delta
+	if _debug_stats_accumulator >= DEBUG_STATS_INTERVAL:
+		_debug_stats_accumulator = 0.0
+		debug_stats_changed.emit(global_position, Vector2(velocity.x, velocity.z).length())
 #endregion
 
 
@@ -531,6 +527,7 @@ func set_gameplay_input_enabled(value: bool) -> void:
 
 func set_local_control_enabled(value: bool) -> void:
 	_local_control_enabled = value
+	set_physics_process(value)
 	if camera != null:
 		camera.current = value
 	if _viewmodel_fill_light != null:
@@ -708,13 +705,6 @@ func get_body_color() -> Color:
 
 
 func cancel_kill_cam() -> void:
-	_kill_cam_active = false
-	if _kill_cam_pcam != null:
-		_kill_cam_pcam.set_priority(0)
-		_kill_cam_pcam.visible = false
-		_kill_cam_pcam.follow_target = null
-	if _phantom_camera_host != null:
-		_phantom_camera_host.process_mode = Node.PROCESS_MODE_DISABLED
 	_restore_first_person_camera()
 	_update_first_person_weapon_visibility()
 
@@ -849,16 +839,16 @@ func _find_wall_normal() -> Vector3:
 	var direct_space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	var best_normal: Vector3 = Vector3.ZERO
 	var best_distance: float = INF
+	var query := PhysicsRayQueryParameters3D.create(origin, origin)
+	query.exclude = [get_rid()]
+	query.collision_mask = collision_mask
+	query.hit_from_inside = false
 
 	for direction in directions:
 		if direction.length_squared() <= 0.0001:
 			continue
 
-		var query := PhysicsRayQueryParameters3D.create(origin, origin + direction.normalized() * wall_check_distance)
-		query.exclude = [get_rid()]
-		query.collision_mask = collision_mask
-		query.hit_from_inside = false
-
+		query.to = origin + direction.normalized() * wall_check_distance
 		var hit: Dictionary = direct_space_state.intersect_ray(query)
 		if hit.is_empty():
 			continue
@@ -1027,30 +1017,11 @@ func _apply_crouch_collision(blend: float) -> void:
 
 #region Camaras de debug (tercera persona)
 func _setup_debug_cameras() -> void:
-	_third_back_pcam = get_node_or_null("ThirdPersonBackDebugPCam") as PhantomCamera3D
-	_third_front_pcam = get_node_or_null("ThirdPersonFrontDebugPCam") as PhantomCamera3D
-	_kill_cam_pcam = get_node_or_null("KillCamPCam") as PhantomCamera3D
-	if _kill_cam_pcam != null:
-		_kill_cam_pcam.visible = false
-		_kill_cam_pcam.set_priority(0)
-	if not debug_camera_enabled:
-		_restore_first_person_camera()
-		return
-	if _third_back_pcam == null:
-		return
-
-	for pcam: PhantomCamera3D in [_third_back_pcam, _third_front_pcam]:
-		if pcam == null:
-			continue
-		pcam.visible = false
-		pcam.set_priority(_DEBUG_CAMERA_PRIORITY_INACTIVE)
-		pcam.follow_damping = true
-
 	_apply_debug_camera_mode()
 
 
 func _cycle_debug_camera_mode() -> void:
-	if not _is_locally_controlled() or _third_back_pcam == null:
+	if not _is_locally_controlled():
 		return
 
 	_debug_camera_mode = ((_debug_camera_mode as int + 1) % DebugCameraMode.size()) as DebugCameraMode
@@ -1058,7 +1029,7 @@ func _cycle_debug_camera_mode() -> void:
 
 
 func _apply_debug_camera_mode() -> void:
-	if not debug_camera_enabled or _third_back_pcam == null:
+	if not debug_camera_enabled:
 		_restore_first_person_camera()
 		return
 
@@ -1066,9 +1037,9 @@ func _apply_debug_camera_mode() -> void:
 		DebugCameraMode.FIRST_PERSON:
 			_restore_first_person_camera()
 		DebugCameraMode.THIRD_PERSON_BACK:
-			_activate_debug_third_person_camera(_third_back_pcam, false)
+			_activate_debug_third_person_camera()
 		DebugCameraMode.THIRD_PERSON_FRONT:
-			_activate_debug_third_person_camera(_third_front_pcam, true)
+			_activate_debug_third_person_camera()
 
 	_update_body_visibility()
 	_update_first_person_weapon_visibility()
@@ -1076,16 +1047,6 @@ func _apply_debug_camera_mode() -> void:
 
 
 func _restore_first_person_camera() -> void:
-	if _third_back_pcam != null:
-		_third_back_pcam.visible = false
-		_third_back_pcam.set_priority(_DEBUG_CAMERA_PRIORITY_INACTIVE)
-	if _third_front_pcam != null:
-		_third_front_pcam.visible = false
-		_third_front_pcam.set_priority(_DEBUG_CAMERA_PRIORITY_INACTIVE)
-
-	if _phantom_camera_host != null:
-		_phantom_camera_host.process_mode = Node.PROCESS_MODE_DISABLED
-
 	if camera == null:
 		return
 
@@ -1107,58 +1068,24 @@ func _ensure_first_person_camera_attached() -> void:
 	_restore_first_person_camera()
 
 
-func _activate_debug_third_person_camera(pcam: PhantomCamera3D, front: bool) -> void:
-	if pcam == null:
-		_restore_first_person_camera()
-		return
-
+func _activate_debug_third_person_camera() -> void:
 	_restore_first_person_camera()
-	pcam.visible = true
-	_apply_debug_third_person_combat_settings(pcam)
-	pcam.set_priority(_DEBUG_CAMERA_PRIORITY_ACTIVE)
-	_sync_debug_third_person_rotation(pcam, front)
-
-	if _phantom_camera_host != null:
-		_phantom_camera_host.process_mode = Node.PROCESS_MODE_DISABLED
 	camera.top_level = true
 	camera.current = _is_locally_controlled()
 	_third_person_camera_initialized = false
 
 
-func _apply_debug_third_person_combat_settings(pcam: PhantomCamera3D) -> void:
-	var aim_scale: float = lerpf(1.0, debug_third_person_aim_distance_scale, _aim_blend)
-	var distance: float = debug_third_person_distance * aim_scale
-	var shoulder_offset: Vector3 = debug_third_person_shoulder_offset
-	if _is_aiming:
-		shoulder_offset.x *= 1.18
-		shoulder_offset.y -= 0.04
-
-	pcam.follow_distance = distance
-	pcam.spring_length = distance
-	pcam.follow_offset = shoulder_offset
-
-
 func _update_debug_cameras() -> void:
-	if not debug_camera_enabled or not _is_locally_controlled() or _third_back_pcam == null:
+	if not debug_camera_enabled or not _is_locally_controlled():
 		return
 
 	if _debug_camera_mode == DebugCameraMode.FIRST_PERSON:
 		return
 
-	var active_pcam: PhantomCamera3D = _third_back_pcam
-	var is_front: bool = false
-	if _debug_camera_mode == DebugCameraMode.THIRD_PERSON_FRONT and _third_front_pcam != null:
-		active_pcam = _third_front_pcam
-		is_front = true
-
-	_apply_debug_third_person_combat_settings(active_pcam)
-	_sync_debug_third_person_rotation(active_pcam, is_front)
-	_update_manual_third_person_camera(get_process_delta_time(), is_front)
-
-
-func _sync_debug_third_person_rotation(pcam: PhantomCamera3D, front: bool) -> void:
-	var yaw_offset: float = 180.0 if front else 0.0
-	pcam.set_third_person_rotation_degrees(Vector3(_pitch_degrees, yaw_offset, 0.0))
+	_update_manual_third_person_camera(
+		get_process_delta_time(),
+		_debug_camera_mode == DebugCameraMode.THIRD_PERSON_FRONT
+	)
 
 
 func _is_debug_first_person_view() -> bool:
