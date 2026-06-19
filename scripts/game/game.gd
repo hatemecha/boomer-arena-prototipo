@@ -619,7 +619,7 @@ func _start_network_match_as_server() -> void:
 	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
 	_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	_sync_score_snapshot_to_peers()
-	_stop_lan_discovery()
+	_refresh_lan_discovery_host()
 
 
 func _prepare_match_world() -> void:
@@ -790,12 +790,12 @@ func _apply_match_rules(match_rules: Dictionary) -> void:
 func _start_lan_discovery_host() -> void:
 	if _lan_discovery == null:
 		return
-	if _is_match_active():
+	if not _is_networked() or not multiplayer.is_server():
 		return
 	var mode_text: String = "time" if _match_manager.win_mode == MatchManager.WinMode.TIME_LIMIT else "kills"
 	var limit_value: int = int(_match_manager.time_limit_seconds / 60.0) if mode_text == "time" else _match_manager.score_limit
 	var host_name: String = PlayerSettingsAccess.get_display_name("Host")
-	_lan_discovery.start_hosting({
+	var payload: Dictionary = {
 		"name": "%s // BOOMER ARENA" % host_name,
 		"port": lan_port,
 		"map": _get_map_label(_selected_map_id),
@@ -803,7 +803,20 @@ func _start_lan_discovery_host() -> void:
 		"limit": limit_value,
 		"players": _get_peer_count(),
 		"max_players": max_lan_players,
-	})
+	}
+	if _lan_discovery.is_hosting():
+		_lan_discovery.update_host_payload(payload)
+	else:
+		_lan_discovery.start_hosting(payload)
+
+
+func _refresh_lan_discovery_host() -> void:
+	if not _is_networked() or not multiplayer.is_server():
+		return
+	if _get_peer_count() >= max_lan_players:
+		_stop_lan_discovery()
+		return
+	_start_lan_discovery_host()
 
 
 func _start_lan_discovery_browse() -> bool:
@@ -1619,8 +1632,7 @@ func _on_server_disconnected() -> void:
 func _on_network_peer_connected(peer_id: int) -> void:
 	if multiplayer.is_server():
 		_register_network_peer(peer_id)
-		if not _is_match_active():
-			_start_lan_discovery_host()
+		_refresh_lan_discovery_host()
 	_refresh_network_hud()
 
 
@@ -1634,6 +1646,7 @@ func _on_network_peer_disconnected(peer_id: int) -> void:
 		return
 	_network_remove_player.rpc(peer_id, player_id)
 	_sync_score_snapshot_to_peers()
+	_refresh_lan_discovery_host()
 	_refresh_network_hud()
 
 

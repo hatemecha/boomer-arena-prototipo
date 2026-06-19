@@ -50,6 +50,19 @@ func start_hosting(payload: Dictionary) -> bool:
 	return true
 
 
+func update_host_payload(payload: Dictionary) -> bool:
+	if not _is_hosting:
+		return start_hosting(payload)
+
+	var previous_session_id: String = _host_session_id
+	_host_payload = payload.duplicate(true)
+	_host_session_id = _get_loopback_session_id(_host_payload)
+	if previous_session_id != _host_session_id:
+		_remove_loopback_session_by_id(previous_session_id)
+	_send_broadcast()
+	return true
+
+
 func start_browsing() -> bool:
 	set_process(true)
 	if _is_browsing and _listen_udp != null and _listen_udp.is_bound():
@@ -61,9 +74,6 @@ func start_browsing() -> bool:
 	_close_send_socket()
 	_loopback_poll_timer = LOOPBACK_POLL_INTERVAL
 	_merge_loopback_sessions()
-	if not _sessions.is_empty():
-		_close_listen_socket(false)
-		return true
 
 	if not _ensure_listen_bound():
 		push_warning("LAN discovery could not bind port %d for browsing." % DISCOVERY_PORT)
@@ -96,6 +106,10 @@ func stop_all() -> void:
 
 func is_browsing() -> bool:
 	return _is_browsing
+
+
+func is_hosting() -> bool:
+	return _is_hosting
 
 
 func get_sessions() -> Array:
@@ -272,12 +286,16 @@ func _publish_loopback_session(payload: Dictionary) -> void:
 
 
 func _remove_loopback_session() -> void:
-	if _host_session_id.is_empty():
+	_remove_loopback_session_by_id(_host_session_id)
+
+
+func _remove_loopback_session_by_id(session_id: String) -> void:
+	if session_id.is_empty():
 		return
 	var sessions: Dictionary = _read_loopback_session_file()
-	if not sessions.has(_host_session_id):
+	if not sessions.has(session_id):
 		return
-	sessions.erase(_host_session_id)
+	sessions.erase(session_id)
 	_write_loopback_session_file(sessions)
 
 
