@@ -98,7 +98,7 @@ theme_override_constants/separation = 8
 [node name="MouseSensitivityLabel" type="Label" parent="Center/Scroll/Content/MouseSensitivityRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "SENS"
+text = "SENSIBILIDAD"
 horizontal_alignment = 2
 
 [node name="MouseSensitivitySlider" type="HSlider" parent="Center/Scroll/Content/MouseSensitivityRow"]
@@ -152,7 +152,7 @@ theme_override_constants/separation = 8
 [node name="WeaponHoldLabel" type="Label" parent="Center/Scroll/Content/WeaponHoldRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "ARMA"
+text = "POSICIÓN ARMA"
 horizontal_alignment = 2
 
 [node name="WeaponHoldOption" type="OptionButton" parent="Center/Scroll/Content/WeaponHoldRow"]
@@ -165,7 +165,7 @@ size_flags_horizontal = 3
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
-text = "MIRA"
+text = "MOSTRAR MIRA"
 
 [node name="VideoHeader" type="Label" parent="Center/Scroll/Content"]
 layout_mode = 2
@@ -178,7 +178,7 @@ theme_override_constants/separation = 8
 [node name="PerformanceProfileLabel" type="Label" parent="Center/Scroll/Content/PerformanceProfileRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "PERF"
+text = "CALIDAD"
 horizontal_alignment = 2
 
 [node name="PerformanceProfileOption" type="OptionButton" parent="Center/Scroll/Content/PerformanceProfileRow"]
@@ -190,12 +190,12 @@ size_flags_horizontal = 3
 [node name="FullscreenCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "FULLSCREEN"
+text = "PANTALLA COMPLETA"
 
 [node name="VsyncCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "VSync"
+text = "SINCRONIZACIÓN VERTICAL"
 
 [node name="FrameLimitRow" type="HBoxContainer" parent="Center/Scroll/Content"]
 layout_mode = 2
@@ -204,7 +204,7 @@ theme_override_constants/separation = 8
 [node name="FrameLimitLabel" type="Label" parent="Center/Scroll/Content/FrameLimitRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "FPS CAP"
+text = "LÍMITE FPS"
 horizontal_alignment = 2
 
 [node name="FrameLimitOption" type="OptionButton" parent="Center/Scroll/Content/FrameLimitRow"]
@@ -215,13 +215,13 @@ size_flags_horizontal = 3
 
 [node name="StyleHeader" type="Label" parent="Center/Scroll/Content"]
 layout_mode = 2
-text = "ESTILO PSX"
+text = "EFECTOS PSX"
 
 [node name="PsxFilterCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
 button_pressed = true
-text = "FILTRO PSX"
+text = "EFECTO PSX"
 
 [node name="TimePresetRow" type="HBoxContainer" parent="Center/Scroll/Content"]
 visible = false
@@ -263,12 +263,12 @@ text = "DESARROLLO"
 [node name="DebugHudCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "HUD DEBUG"
+text = "DATOS DE DEPURACIÓN"
 
 [node name="DebugDrawCheck" type="CheckBox" parent="Center/Scroll/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Debug Draw 3D"
+text = "COLISIONES DE DEPURACIÓN"
 
 [node name="DevelopmentActions" type="HBoxContainer" parent="Center/Scroll/Content"]
 layout_mode = 2

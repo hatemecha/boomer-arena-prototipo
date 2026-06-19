@@ -6,7 +6,7 @@ const MUTED: Color = Color(0.62, 0.62, 0.56, 1.0)
 const BLACK_CLEAR: Color = Color(0.0, 0.0, 0.0, 0.0)
 const TITLE_FONT: FontFile = preload("res://fonts/WO3.ttf")
 
-const TAG_WIDTH: int = 72
+const TAG_WIDTH: int = 104
 const FONT_SIZE: int = 14
 const TITLE_SIZE: int = 18
 const SECTION_SIZE: int = 13

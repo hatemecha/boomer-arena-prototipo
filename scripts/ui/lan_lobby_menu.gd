@@ -28,8 +28,10 @@ const TIME_OF_DAY_NIGHT: int = 2
 const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
 const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
 const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
-const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
-const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.74, 0.74)
+const MENU_MAX_WIDTH: float = 400.0
+const MENU_MIN_WIDTH: float = 280.0
+const DEFAULT_SCREEN_MARGIN: float = 32.0
+const ULTRA_LOW_SCREEN_MARGIN: float = 12.0
 const DEFAULT_CONTENT_SEPARATION: int = 10
 const ULTRA_LOW_CONTENT_SEPARATION: int = 6
 const DEFAULT_SCREEN_SEPARATION: int = 8
@@ -71,11 +73,13 @@ var _discovered_sessions: Array = []
 var _selected_map_id: String = ""
 var _pending_map_options: Array = []
 var _pending_selected_map_id: String = ""
+var _scroll: ScrollContainer
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	ArenaMenuBackdropScript.apply(self)
+	_ensure_scroll_container()
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_menu_motion = ArenaMenuMotionScript.new()
 	_menu_motion.bind(self)
@@ -91,6 +95,24 @@ func _ready() -> void:
 		PlayerSettingsAccess.connect_settings_changed(_on_settings_changed)
 		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
+	resized.connect(_apply_menu_profile_layout)
+
+
+func _ensure_scroll_container() -> void:
+	if content.get_parent() is ScrollContainer:
+		_scroll = content.get_parent() as ScrollContainer
+		return
+
+	var center := content.get_parent() as CenterContainer
+	if center == null:
+		return
+	_scroll = ScrollContainer.new()
+	_scroll.name = "ResponsiveScroll"
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	center.add_child(_scroll)
+	_scroll.owner = self
+	content.reparent(_scroll)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
 func configure(default_address: String, default_port: int, local_addresses: PackedStringArray) -> void:
@@ -465,11 +487,19 @@ func _update_win_mode_ui() -> void:
 
 func _apply_menu_profile_layout() -> void:
 	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
-	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var screen_margin: float = ULTRA_LOW_SCREEN_MARGIN if use_ultra_low_layout else DEFAULT_SCREEN_MARGIN
+	var available_size: Vector2 = viewport_size - Vector2.ONE * screen_margin * 2.0
 	var content_separation: int = ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION
 	var screen_separation: int = ULTRA_LOW_SCREEN_SEPARATION if use_ultra_low_layout else DEFAULT_SCREEN_SEPARATION
+	if _scroll != null:
+		_scroll.custom_minimum_size = Vector2(
+			clampf(available_size.x, MENU_MIN_WIDTH, MENU_MAX_WIDTH),
+			maxf(available_size.y, 180.0)
+		)
 	if content != null:
-		content.scale = menu_scale
+		content.scale = Vector2.ONE
+		content.custom_minimum_size.x = maxf(_scroll.custom_minimum_size.x - 16.0, 264.0)
 		content.add_theme_constant_override("separation", content_separation)
 	for screen_container in [
 		entry_screen,
@@ -485,8 +515,6 @@ func _apply_menu_profile_layout() -> void:
 		session_list.custom_minimum_size = (
 			ULTRA_LOW_SESSION_LIST_SIZE if use_ultra_low_layout else DEFAULT_SESSION_LIST_SIZE
 		)
-	if content != null:
-		content.pivot_offset = content.get_combined_minimum_size() * 0.5 if use_ultra_low_layout else Vector2.ZERO
 
 
 func _select_time_of_day(preset: int) -> void:

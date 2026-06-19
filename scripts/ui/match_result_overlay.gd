@@ -13,8 +13,6 @@ const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_b
 const WIN_COLOR: Color = Color(0.24, 1.0, 0.38, 1.0)
 const LOSE_COLOR: Color = Color(1.0, 0.08, 0.08, 1.0)
 const DRAW_COLOR: Color = Color(0.92, 0.92, 0.86, 1.0)
-const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
-const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.78, 0.78)
 const DEFAULT_TITLE_MINIMUM_SIZE: Vector2 = Vector2(420.0, 58.0)
 const ULTRA_LOW_TITLE_MINIMUM_SIZE: Vector2 = Vector2(330.0, 46.0)
 const DEFAULT_BUTTON_MINIMUM_SIZE: Vector2 = Vector2(180.0, 28.0)
@@ -45,18 +43,20 @@ func _ready() -> void:
 	if PlayerSettingsAccess.has_settings():
 		PlayerSettingsAccess.connect_settings_changed(_on_settings_changed)
 		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
+	resized.connect(_apply_menu_profile_layout)
 
 
 func _apply_fonts() -> void:
+	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
 	if title_label != null:
 		title_label.add_theme_font_override("font", TITLE_FONT)
-		title_label.add_theme_font_size_override("font_size", 44)
+		title_label.add_theme_font_size_override("font_size", 32 if use_ultra_low_layout else 44)
 	if subtitle_label != null:
 		subtitle_label.add_theme_font_override("font", SUBTITLE_FONT)
-		subtitle_label.add_theme_font_size_override("font_size", 16)
+		subtitle_label.add_theme_font_size_override("font_size", 14 if use_ultra_low_layout else 16)
 	if score_label != null:
 		score_label.add_theme_font_override("font", SUBTITLE_FONT)
-		score_label.add_theme_font_size_override("font_size", 14)
+		score_label.add_theme_font_size_override("font_size", 12 if use_ultra_low_layout else 14)
 
 
 func _on_settings_changed() -> void:
@@ -70,13 +70,14 @@ func _on_performance_profile_changed(_profile: int) -> void:
 
 func _apply_menu_profile_layout() -> void:
 	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
-	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
-	var title_minimum_size: Vector2 = (
-		ULTRA_LOW_TITLE_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_TITLE_MINIMUM_SIZE
-	)
+	var viewport_width: float = get_viewport_rect().size.x
+	var base_title_size: Vector2 = ULTRA_LOW_TITLE_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_TITLE_MINIMUM_SIZE
+	var title_minimum_size := Vector2(minf(base_title_size.x, viewport_width - 32.0), base_title_size.y)
+	var button_width: float = clampf((viewport_width - 48.0) * 0.5, 120.0, 180.0)
 	var button_minimum_size: Vector2 = (
 		ULTRA_LOW_BUTTON_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_BUTTON_MINIMUM_SIZE
 	)
+	button_minimum_size.x = minf(button_minimum_size.x, button_width)
 	if title_label != null:
 		title_label.custom_minimum_size = title_minimum_size
 	if buttons != null:
@@ -88,7 +89,7 @@ func _apply_menu_profile_layout() -> void:
 		if button is Button:
 			(button as Button).custom_minimum_size = button_minimum_size
 	if content != null:
-		content.scale = menu_scale
+		content.scale = Vector2.ONE
 		content.add_theme_constant_override(
 			"separation",
 			ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION

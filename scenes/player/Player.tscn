@@ -104,7 +104,7 @@ spread_degrees = 9.0
 weapon_range = 35.0
 aim_sight_path = NodePath("")
 reload_drop_distance = 0.25
-reload_tilt_degrees = 40.0
+reload_tilt_degrees = 46.0
 
 [node name="WeaponModel" parent="CameraPivot/PlayerCamera/SawnOff" unique_id=300000004 instance=ExtResource("7_sawnoff")]
 transform = Transform3D(1.55, 0, 0, 0, 1.55, 0, 0, 0, 1.55, 0, 0, 0)
@@ -129,8 +129,8 @@ weapon_kick_scale = 1.05
 spread_degrees = 0.6
 aim_sight_path = NodePath("")
 aim_pose_path = NodePath("../RevolverAimPose")
-reload_drop_distance = 0.22
-reload_tilt_degrees = 30.0
+reload_drop_distance = 0.26
+reload_tilt_degrees = 38.0
 
 [node name="WeaponModel" parent="CameraPivot/PlayerCamera/Revolver" unique_id=300000002 instance=ExtResource("6_revolver")]
 transform = Transform3D(1.65, 0, 0, 0, 1.65, 0, 0, 0, 1.65, 0, 0, 0)
@@ -152,7 +152,8 @@ recoil_degrees = 3.0
 spread_degrees = 0.4
 weapon_range = 120.0
 aim_sight_path = NodePath("")
-reload_tilt_degrees = 20.0
+reload_drop_distance = 0.26
+reload_tilt_degrees = 34.0
 
 [node name="WeaponModel" parent="CameraPivot/PlayerCamera/Repeater" unique_id=300000006 instance=ExtResource("8_repeater")]
 transform = Transform3D(1.2, 0, 0, 0, 1.2, 0, 0, 0, 1.2, 0, -0.14, 0.03)

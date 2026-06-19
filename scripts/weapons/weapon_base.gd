@@ -29,8 +29,8 @@ signal fired(weapon: WeaponBase)
 @export var aim_sight_path: NodePath = NodePath("WeaponModel/AimRearSight")
 @export var aim_pose_path: NodePath = NodePath()
 @export var reload_style: ReloadStyle = ReloadStyle.MAGAZINE
-@export_range(0.0, 0.5) var reload_drop_distance: float = 0.18
-@export_range(0.0, 60.0) var reload_tilt_degrees: float = 22.0
+@export_range(0.0, 0.5) var reload_drop_distance: float = 0.26
+@export_range(0.0, 60.0) var reload_tilt_degrees: float = 36.0
 
 var ammo_in_mag: int = mag_size
 var state: String = "Idle"

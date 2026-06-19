@@ -2,6 +2,8 @@ class_name HUD
 extends Control
 
 const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
+const DATA_FONT: FontFile = preload("res://fonts/2097.ttf")
+const DISPLAY_FONT: FontFile = preload("res://fonts/supErphoniX2.ttf")
 
 @export var hud_motion_enabled: bool = true
 @export_range(0.0, 16.0) var hud_move_sway_px: float = 7.0
@@ -135,6 +137,7 @@ func _ready() -> void:
 	_base_hud_look_sway_px = hud_look_sway_px
 	_ensure_optional_labels()
 	_ensure_pickup_interaction_widgets()
+	_apply_hud_typography()
 	_capture_hud_base_offsets()
 	resized.connect(_center_crosshair)
 	call_deferred("_center_crosshair")
@@ -179,6 +182,17 @@ func apply_accent_theme() -> void:
 	if music_state_label != null:
 		music_state_label.modulate = accent
 	_update_health_tint()
+
+
+func _apply_hud_typography() -> void:
+	for node in find_children("*", "Label", true, false):
+		var label := node as Label
+		label.add_theme_font_override(
+			"font",
+			DISPLAY_FONT if label.name in [&"MatchObjective", &"ScoreboardTitle"] else DATA_FONT
+		)
+		label.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+		label.add_theme_constant_override("outline_size", 1)
 
 
 func reset_motion() -> void:
@@ -413,6 +427,7 @@ func show_damage_feedback(victim: PlayerController, amount: int, shot_id: int) -
 	label.text = "-%d" % amount
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", DATA_FONT)
 	label.add_theme_font_size_override("font_size", 18)
 	label.add_theme_color_override("font_color", HudIcons.HUD_WARN_TINT)
 	label.add_theme_color_override("font_outline_color", Color(0.05, 0.01, 0.0, 0.95))
@@ -686,12 +701,18 @@ func add_kill_feed_entry(killer_name: String, victim_name: String, killer_id: in
 	tag.custom_minimum_size = Vector2(72.0, 16.0)
 	tag.text = "KILL"
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	tag.add_theme_font_override("font", DISPLAY_FONT)
 	tag.add_theme_font_size_override("font_size", 14)
+	tag.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+	tag.add_theme_constant_override("outline_size", 1)
 	tag.modulate = HudIcons.get_tag_tint()
 
 	var entry := Label.new()
 	entry.text = "%s → %s" % [killer_name.to_upper(), victim_name.to_upper()]
+	entry.add_theme_font_override("font", DATA_FONT)
 	entry.add_theme_font_size_override("font_size", 14)
+	entry.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+	entry.add_theme_constant_override("outline_size", 1)
 	entry.modulate = HudIcons.get_accent_color() if killer_id == _local_player_id else HudIcons.HUD_TINT
 
 	row.add_child(tag)

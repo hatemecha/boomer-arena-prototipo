@@ -15,12 +15,19 @@ const CROSSHAIR_STYLE_COUNT: int = 12
 const ArenaMenuStyleScript: GDScript = preload("res://scripts/ui/arena_menu_style.gd")
 const ArenaMenuMotionScript: GDScript = preload("res://scripts/ui/arena_menu_motion.gd")
 const ArenaMenuBackdropScript: GDScript = preload("res://scripts/ui/arena_menu_backdrop.gd")
-const DEFAULT_SCROLL_MINIMUM_SIZE: Vector2 = Vector2(320.0, 300.0)
-const ULTRA_LOW_SCROLL_MINIMUM_SIZE: Vector2 = Vector2(300.0, 220.0)
-const DEFAULT_MENU_SCALE: Vector2 = Vector2.ONE
-const ULTRA_LOW_MENU_SCALE: Vector2 = Vector2(0.74, 0.74)
+const MENU_MAX_WIDTH: float = 420.0
+const MENU_MIN_WIDTH: float = 280.0
+const DEFAULT_SCREEN_MARGIN: float = 24.0
+const ULTRA_LOW_SCREEN_MARGIN: float = 12.0
 const DEFAULT_MENU_SEPARATION: int = 8
 const ULTRA_LOW_MENU_SEPARATION: int = 6
+
+enum OptionsSection {
+	PLAYER,
+	CONTROLS,
+	VIDEO,
+	ADVANCED,
+}
 
 @onready var name_edit: LineEdit = %NameEdit
 @onready var accent_picker: ColorPickerButton = %AccentPicker
@@ -65,12 +72,17 @@ var _in_match: bool = false
 var _accent_before_edit: Color = Color(1.0, 0.12, 0.05)
 var _accent_edit_committed: bool = false
 var _time_preset_row_initial_visible: bool = false
+var _active_section: int = OptionsSection.PLAYER
+var _section_tabs: HBoxContainer
+var _section_buttons: Array[Button] = []
+var _section_nodes: Dictionary = {}
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
+	_setup_section_tabs()
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_menu_motion = ArenaMenuMotionScript.new()
 	_menu_motion.bind(self)
@@ -78,10 +90,89 @@ func _ready() -> void:
 	_populate_options()
 	_connect_controls()
 	_configure_dev_buttons()
+	resized.connect(_apply_menu_profile_layout)
 	if PlayerSettingsAccess.has_settings():
 		PlayerSettingsAccess.connect_settings_changed(_on_player_settings_changed)
 		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
+	_show_options_section(OptionsSection.PLAYER)
+
+
+func _setup_section_tabs() -> void:
+	_section_tabs = HBoxContainer.new()
+	_section_tabs.name = "SectionTabs"
+	_section_tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	_section_tabs.add_theme_constant_override("separation", 6)
+	content.add_child(_section_tabs)
+	content.move_child(_section_tabs, 1)
+
+	var button_group := ButtonGroup.new()
+	button_group.allow_unpress = false
+	for section_label in ["JUGADOR", "CONTROLES", "VIDEO", "AVANZADO"]:
+		var button := Button.new()
+		button.text = section_label
+		button.toggle_mode = true
+		button.button_group = button_group
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_show_options_section.bind(_section_buttons.size()))
+		_section_tabs.add_child(button)
+		_section_buttons.append(button)
+
+	_section_nodes = {
+		OptionsSection.PLAYER: [
+			$Center/Scroll/Content/ProfileHeader,
+			$Center/Scroll/Content/NameRow,
+			$Center/Scroll/Content/AccentRow,
+			$Center/Scroll/Content/CrosshairStyleRow,
+		],
+		OptionsSection.CONTROLS: [
+			$Center/Scroll/Content/GameplayHeader,
+			$Center/Scroll/Content/MouseSensitivityRow,
+			$Center/Scroll/Content/FovRow,
+			$Center/Scroll/Content/WeaponHoldRow,
+			crosshair_check,
+		],
+		OptionsSection.VIDEO: [
+			$Center/Scroll/Content/VideoHeader,
+			$Center/Scroll/Content/PerformanceProfileRow,
+			fullscreen_check,
+			vsync_check,
+			$Center/Scroll/Content/FrameLimitRow,
+		],
+		OptionsSection.ADVANCED: [
+			$Center/Scroll/Content/DevelopmentHeader,
+			debug_hud_check,
+			debug_draw_check,
+			$Center/Scroll/Content/DevelopmentActions,
+		],
+	}
+
+
+func _show_options_section(section: int) -> void:
+	_active_section = clampi(section, 0, OptionsSection.size() - 1)
+	for index in range(_section_buttons.size()):
+		_section_buttons[index].set_pressed_no_signal(index == _active_section)
+	_apply_section_visibility()
+	if scroll != null:
+		scroll.scroll_vertical = 0
+
+
+func _apply_section_visibility() -> void:
+	for section in _section_nodes:
+		for node: CanvasItem in _section_nodes[section]:
+			node.visible = int(section) == _active_section
+
+	var has_player: bool = _player != null
+	if _section_buttons.size() > OptionsSection.ADVANCED:
+		_section_buttons[OptionsSection.ADVANCED].visible = has_player
+	if _active_section == OptionsSection.ADVANCED and not has_player:
+		_show_options_section(OptionsSection.PLAYER)
+		return
+
+	if _active_section == OptionsSection.ADVANCED:
+		debug_hud_check.visible = has_player
+		debug_draw_check.visible = has_player and _debug_draw_manager != null
+	_update_psx_option_visibility()
 
 
 func _configure_dev_buttons() -> void:
@@ -124,6 +215,7 @@ func _update_mode_visibility() -> void:
 	respawn_player_button.visible = has_player
 	debug_hud_check.visible = has_player
 	debug_draw_check.visible = has_player and _debug_draw_manager != null
+	_apply_section_visibility()
 
 
 func open() -> void:
@@ -629,26 +721,30 @@ func _on_respawn_player_pressed() -> void:
 
 func _update_psx_option_visibility() -> void:
 	var show_filter_options: bool = not PlayerSettingsAccess.has_settings() or not PlayerSettingsAccess.is_low_power_profile()
+	var video_section_visible: bool = _active_section == OptionsSection.VIDEO
 	if style_header != null:
-		style_header.visible = show_filter_options
+		style_header.visible = video_section_visible and show_filter_options
 	if psx_filter_check != null:
-		psx_filter_check.visible = show_filter_options
+		psx_filter_check.visible = video_section_visible and show_filter_options
 	if time_preset_row != null:
-		time_preset_row.visible = show_filter_options and _time_preset_row_initial_visible
+		time_preset_row.visible = video_section_visible and show_filter_options and _time_preset_row_initial_visible
 	if lens_preset_row != null:
-		lens_preset_row.visible = show_filter_options
+		lens_preset_row.visible = video_section_visible and show_filter_options
 
 
 func _apply_menu_profile_layout() -> void:
 	var use_ultra_low_layout: bool = PlayerSettingsAccess.is_ultra_low_profile()
-	var menu_scale: Vector2 = ULTRA_LOW_MENU_SCALE if use_ultra_low_layout else DEFAULT_MENU_SCALE
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var screen_margin: float = ULTRA_LOW_SCREEN_MARGIN if use_ultra_low_layout else DEFAULT_SCREEN_MARGIN
+	var available_size: Vector2 = viewport_size - Vector2.ONE * screen_margin * 2.0
 	if scroll != null:
-		scroll.custom_minimum_size = (
-			ULTRA_LOW_SCROLL_MINIMUM_SIZE if use_ultra_low_layout else DEFAULT_SCROLL_MINIMUM_SIZE
+		scroll.custom_minimum_size = Vector2(
+			clampf(available_size.x, MENU_MIN_WIDTH, MENU_MAX_WIDTH),
+			maxf(available_size.y, 180.0)
 		)
-		scroll.scale = menu_scale
-		scroll.pivot_offset = scroll.custom_minimum_size * 0.5 if use_ultra_low_layout else Vector2.ZERO
+		scroll.scale = Vector2.ONE
 	if content != null:
+		content.custom_minimum_size.x = maxf(scroll.custom_minimum_size.x - 16.0, 264.0)
 		content.add_theme_constant_override(
 			"separation",
 			ULTRA_LOW_MENU_SEPARATION if use_ultra_low_layout else DEFAULT_MENU_SEPARATION
