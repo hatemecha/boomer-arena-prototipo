@@ -83,6 +83,8 @@ func _ready() -> void:
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
 	_setup_section_tabs()
+	ArenaMenuStyleScript.wrap_menu_shell(scroll)
+	ArenaMenuStyleScript.configure_content_column(content)
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_menu_motion = ArenaMenuMotionScript.new()
 	_menu_motion.bind(self)
@@ -96,6 +98,7 @@ func _ready() -> void:
 		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
 	_show_options_section(OptionsSection.PLAYER)
+	call_deferred("_apply_menu_profile_layout")
 
 
 func _setup_section_tabs() -> void:
@@ -138,6 +141,10 @@ func _setup_section_tabs() -> void:
 			fullscreen_check,
 			vsync_check,
 			$Center/Scroll/Content/FrameLimitRow,
+			style_header,
+			psx_filter_check,
+			time_preset_row,
+			lens_preset_row,
 		],
 		OptionsSection.ADVANCED: [
 			$Center/Scroll/Content/DevelopmentHeader,
@@ -737,15 +744,17 @@ func _apply_menu_profile_layout() -> void:
 	var viewport_size: Vector2 = get_viewport_rect().size
 	var screen_margin: float = ULTRA_LOW_SCREEN_MARGIN if use_ultra_low_layout else DEFAULT_SCREEN_MARGIN
 	var available_size: Vector2 = viewport_size - Vector2.ONE * screen_margin * 2.0
-	if scroll != null:
-		scroll.custom_minimum_size = Vector2(
-			clampf(available_size.x, MENU_MIN_WIDTH, MENU_MAX_WIDTH),
-			maxf(available_size.y, 180.0)
-		)
-		scroll.scale = Vector2.ONE
+	ArenaMenuStyleScript.configure_centered_scroll(
+		scroll,
+		content,
+		available_size,
+		MENU_MIN_WIDTH,
+		MENU_MAX_WIDTH
+	)
 	if content != null:
-		content.custom_minimum_size.x = maxf(scroll.custom_minimum_size.x - 16.0, 264.0)
 		content.add_theme_constant_override(
 			"separation",
 			ULTRA_LOW_MENU_SEPARATION if use_ultra_low_layout else DEFAULT_MENU_SEPARATION
 		)
+	if scroll != null and content != null:
+		ArenaMenuStyleScript.sync_scroll_height(scroll, content, available_size.y)

@@ -64,6 +64,21 @@ const ULTRA_LOW_SESSION_LIST_SIZE: Vector2 = Vector2(260.0, 86.0)
 @onready var manual_join_toggle: CheckBox = %ManualJoinToggle
 @onready var manual_join_panel: VBoxContainer = %ManualJoinPanel
 @onready var disconnect_button: Button = %DisconnectButton
+@onready var practice_button: Button = %PracticeButton
+@onready var lan_button: Button = %LanButton
+@onready var options_button: Button = %OptionsButton
+@onready var quit_button: Button = %QuitButton
+@onready var start_setup_button: Button = %StartSetupButton
+@onready var back_from_setup_button: Button = %BackFromSetupButton
+@onready var host_lan_button: Button = %HostLanButton
+@onready var browse_lan_button: Button = %BrowseLanButton
+@onready var back_from_lan_choice_button: Button = %BackFromLanChoiceButton
+@onready var copy_info_button: Button = %CopyInfoButton
+@onready var create_host_button: Button = %CreateHostButton
+@onready var back_from_host_button: Button = %BackFromHostButton
+@onready var refresh_sessions_button: Button = %RefreshSessionsButton
+@onready var join_manual_button: Button = %JoinManualButton
+@onready var back_from_join_button: Button = %BackFromJoinButton
 
 var _menu_motion
 var _current_screen: int = Screen.ENTRY
@@ -73,13 +88,13 @@ var _discovered_sessions: Array = []
 var _selected_map_id: String = ""
 var _pending_map_options: Array = []
 var _pending_selected_map_id: String = ""
-var _scroll: ScrollContainer
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	ArenaMenuBackdropScript.apply(self)
-	_ensure_scroll_container()
+	ArenaMenuStyleScript.wrap_menu_shell(content)
+	ArenaMenuStyleScript.configure_content_column(content)
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_menu_motion = ArenaMenuMotionScript.new()
 	_menu_motion.bind(self)
@@ -96,23 +111,7 @@ func _ready() -> void:
 		PlayerSettingsAccess.connect_performance_profile_changed(_on_performance_profile_changed)
 	_apply_menu_profile_layout()
 	resized.connect(_apply_menu_profile_layout)
-
-
-func _ensure_scroll_container() -> void:
-	if content.get_parent() is ScrollContainer:
-		_scroll = content.get_parent() as ScrollContainer
-		return
-
-	var center := content.get_parent() as CenterContainer
-	if center == null:
-		return
-	_scroll = ScrollContainer.new()
-	_scroll.name = "ResponsiveScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	center.add_child(_scroll)
-	_scroll.owner = self
-	content.reparent(_scroll)
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	call_deferred("_apply_menu_profile_layout")
 
 
 func configure(default_address: String, default_port: int, local_addresses: PackedStringArray) -> void:
@@ -220,23 +219,23 @@ func get_match_rules() -> Dictionary:
 
 
 func _connect_buttons() -> void:
-	%PracticeButton.pressed.connect(_on_practice_entry_pressed)
-	%LanButton.pressed.connect(_on_lan_entry_pressed)
-	%OptionsButton.pressed.connect(_on_options_pressed)
-	%QuitButton.pressed.connect(_on_quit_pressed)
-	%StartSetupButton.pressed.connect(_on_start_setup_pressed)
-	%BackFromSetupButton.pressed.connect(_on_back_from_setup_pressed)
-	%HostLanButton.pressed.connect(_on_host_lan_choice_pressed)
-	%BrowseLanButton.pressed.connect(_on_browse_lan_pressed)
-	%BackFromLanChoiceButton.pressed.connect(_on_back_from_lan_choice_pressed)
-	%CopyInfoButton.pressed.connect(_on_copy_info_pressed)
-	%CreateHostButton.pressed.connect(_on_create_host_pressed)
-	%BackFromHostButton.pressed.connect(_on_back_from_host_pressed)
-	%RefreshSessionsButton.pressed.connect(_on_refresh_sessions_pressed)
+	practice_button.pressed.connect(_on_practice_entry_pressed)
+	lan_button.pressed.connect(_on_lan_entry_pressed)
+	options_button.pressed.connect(_on_options_pressed)
+	quit_button.pressed.connect(_on_quit_pressed)
+	start_setup_button.pressed.connect(_on_start_setup_pressed)
+	back_from_setup_button.pressed.connect(_on_back_from_setup_pressed)
+	host_lan_button.pressed.connect(_on_host_lan_choice_pressed)
+	browse_lan_button.pressed.connect(_on_browse_lan_pressed)
+	back_from_lan_choice_button.pressed.connect(_on_back_from_lan_choice_pressed)
+	copy_info_button.pressed.connect(_on_copy_info_pressed)
+	create_host_button.pressed.connect(_on_create_host_pressed)
+	back_from_host_button.pressed.connect(_on_back_from_host_pressed)
+	refresh_sessions_button.pressed.connect(_on_refresh_sessions_pressed)
 	session_list.item_activated.connect(_on_session_activated)
 	manual_join_toggle.toggled.connect(_on_manual_join_toggled)
-	%JoinManualButton.pressed.connect(_on_join_manual_pressed)
-	%BackFromJoinButton.pressed.connect(_on_back_from_join_pressed)
+	join_manual_button.pressed.connect(_on_join_manual_pressed)
+	back_from_join_button.pressed.connect(_on_back_from_join_pressed)
 	disconnect_button.pressed.connect(_on_disconnect_pressed)
 	win_mode_option.item_selected.connect(_on_win_mode_selected)
 
@@ -388,32 +387,32 @@ func _show_screen(screen: int) -> void:
 	lan_choice_screen.visible = screen == Screen.LAN_CHOICE
 	host_screen.visible = screen == Screen.HOST
 	join_screen.visible = screen == Screen.JOIN
-	_apply_menu_profile_layout()
+	call_deferred("_apply_menu_profile_layout")
 	_focus_current_screen()
 
 
 func _focus_current_screen() -> void:
 	match _current_screen:
 		Screen.ENTRY:
-			%PracticeButton.grab_focus()
+			practice_button.grab_focus()
 		Screen.SETUP:
 			if map_option != null:
 				map_option.grab_focus()
 			elif _setup_for_lan_host:
-				%StartSetupButton.grab_focus()
+				start_setup_button.grab_focus()
 			elif time_of_day_option != null:
 				time_of_day_option.grab_focus()
 			else:
-				%StartSetupButton.grab_focus()
+				start_setup_button.grab_focus()
 		Screen.LAN_CHOICE:
-			%HostLanButton.grab_focus()
+			host_lan_button.grab_focus()
 		Screen.HOST:
-			%CreateHostButton.grab_focus()
+			create_host_button.grab_focus()
 		Screen.JOIN:
 			if session_list.get_item_count() > 0:
 				session_list.grab_focus()
 			else:
-				%RefreshSessionsButton.grab_focus()
+				refresh_sessions_button.grab_focus()
 
 
 func _set_screen_interactive(enabled: bool) -> void:
@@ -492,14 +491,14 @@ func _apply_menu_profile_layout() -> void:
 	var available_size: Vector2 = viewport_size - Vector2.ONE * screen_margin * 2.0
 	var content_separation: int = ULTRA_LOW_CONTENT_SEPARATION if use_ultra_low_layout else DEFAULT_CONTENT_SEPARATION
 	var screen_separation: int = ULTRA_LOW_SCREEN_SEPARATION if use_ultra_low_layout else DEFAULT_SCREEN_SEPARATION
-	if _scroll != null:
-		_scroll.custom_minimum_size = Vector2(
-			clampf(available_size.x, MENU_MIN_WIDTH, MENU_MAX_WIDTH),
-			maxf(available_size.y, 180.0)
-		)
+	ArenaMenuStyleScript.configure_menu_width(
+		content,
+		available_size.x,
+		MENU_MIN_WIDTH,
+		MENU_MAX_WIDTH
+	)
 	if content != null:
 		content.scale = Vector2.ONE
-		content.custom_minimum_size.x = maxf(_scroll.custom_minimum_size.x - 16.0, 264.0)
 		content.add_theme_constant_override("separation", content_separation)
 	for screen_container in [
 		entry_screen,

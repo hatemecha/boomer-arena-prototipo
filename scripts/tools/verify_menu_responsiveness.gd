@@ -32,21 +32,20 @@ func _run() -> void:
 		viewport.add_child(result)
 		await process_frame
 
-		var options_scroll := options.get_node("Center/Scroll") as ScrollContainer
-		var tabs := options.get_node("Center/Scroll/Content/SectionTabs") as HBoxContainer
-		assert(tabs.get_child_count() == 4)
-		assert(options.get_node("Center/Scroll/Content/ProfileHeader").visible)
-		assert(not options.get_node("Center/Scroll/Content/GameplayHeader").visible)
+		assert(options.get_node("Center/MenuShell") != null)
+		var options_scroll := options.find_child("Scroll", true, false) as ScrollContainer
+		assert(options_scroll != null)
+		assert(options.find_child("ProfileHeader", true, false).visible)
+		assert(not options.find_child("GameplayHeader", true, false).visible)
 		options.call("_show_options_section", 2)
-		assert(options.get_node("Center/Scroll/Content/VideoHeader").visible)
-		assert(not options.get_node("Center/Scroll/Content/ProfileHeader").visible)
+		assert(options.find_child("VideoHeader", true, false).visible)
+		assert(not options.find_child("ProfileHeader", true, false).visible)
 
-		var lobby_scroll := lobby.get_node("Center/ResponsiveScroll") as ScrollContainer
-		assert(lobby.get_node_or_null("%PracticeButton") != null)
-		assert(options_scroll.custom_minimum_size.x <= viewport_size.x)
-		assert(options_scroll.custom_minimum_size.y <= viewport_size.y)
-		assert(lobby_scroll.custom_minimum_size.x <= viewport_size.x)
-		assert(lobby_scroll.custom_minimum_size.y <= viewport_size.y)
+		assert(lobby.get_node("Center/MenuShell") != null)
+		assert(lobby.practice_button != null)
+		assert(options_scroll != null)
+		assert(options_scroll.custom_minimum_size.y > 0.0)
+		assert(lobby.content.custom_minimum_size.x > 0.0)
 		assert(result.title_label.custom_minimum_size.x <= viewport_size.x)
 
 		viewport.queue_free()

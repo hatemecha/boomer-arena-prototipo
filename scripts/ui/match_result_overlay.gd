@@ -36,6 +36,8 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	ArenaMenuBackdropScript.apply(self)
+	ArenaMenuStyleScript.wrap_menu_shell(content)
+	ArenaMenuStyleScript.configure_content_column(content)
 	ArenaMenuStyleScript.apply_to_menu(self)
 	_apply_menu_profile_layout()
 	rematch_button.pressed.connect(_on_rematch_pressed)
