@@ -261,6 +261,7 @@ func _notify_visual_director_scene_changed() -> void:
 	var visual_director: PSXVisualDirector = game_root.get_node_or_null("PSXVisualDirector") as PSXVisualDirector
 	if visual_director != null:
 		visual_director.invalidate_scene_cache()
+		visual_director.refresh_visual_style()
 
 
 func _apply_psx_materials(root: Node, material: Material) -> void:

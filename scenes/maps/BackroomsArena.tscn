@@ -1,0 +1,151 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/backrooms_arena.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://backrooms0.glb" id="2_map"]
+
+[sub_resource type="Environment" id="Environment_backrooms"]
+background_mode = 1
+background_color = Color(0.78, 0.72, 0.5, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.92, 0.86, 0.62, 1)
+ambient_light_energy = 0.78
+fog_enabled = true
+fog_light_color = Color(0.9, 0.84, 0.6, 1)
+fog_density = 0.009
+adjustment_enabled = true
+adjustment_brightness = 1.04
+adjustment_contrast = 1.06
+adjustment_saturation = 0.66
+
+[sub_resource type="BoxShape3D" id="Shape_void_recovery"]
+size = Vector3(52, 2, 100)
+
+[node name="BackroomsArena" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="MapModel" parent="." instance=ExtResource("2_map")]
+position = Vector3(-0.534, -0.0205, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_backrooms")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-82, 18, 0)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 0.42
+shadow_enabled = false
+
+[node name="BackroomsLightNW" type="OmniLight3D" parent="."]
+position = Vector3(-12, 3.8, -12)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.75
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="BackroomsLightNE" type="OmniLight3D" parent="."]
+position = Vector3(12, 3.8, -12)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.75
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="BackroomsLightSW" type="OmniLight3D" parent="."]
+position = Vector3(-12, 3.8, 12)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.75
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="BackroomsLightSE" type="OmniLight3D" parent="."]
+position = Vector3(12, 3.8, 12)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.75
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="BackroomsLightHallwayA" type="OmniLight3D" parent="."]
+position = Vector3(20, 3.8, 38)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.65
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="BackroomsLightHallwayB" type="OmniLight3D" parent="."]
+position = Vector3(20, 3.8, 58)
+light_color = Color(1, 0.9, 0.62, 1)
+light_energy = 1.65
+shadow_enabled = false
+omni_range = 22.0
+
+[node name="VoidRecovery" type="Area3D" parent="."]
+position = Vector3(0, -3.5, 22)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VoidRecovery"]
+shape = SubResource("Shape_void_recovery")
+
+[node name="SpawnPoints" type="Node3D" parent="."]
+
+[node name="Spawn0" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(-14, 0.05, -14)
+rotation = Vector3(0, 3.14159, 0)
+
+[node name="Spawn1" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(14, 0.05, -10)
+rotation = Vector3(0, 2.87979, 0)
+
+[node name="Spawn2" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(-14, 0.05, 14)
+rotation = Vector3(0, 0, 0)
+
+[node name="Spawn3" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(14, 0.05, 14)
+rotation = Vector3(0, 0, 0)
+
+[node name="PickupSpawns" type="Node3D" parent="."]
+
+[node name="AmmoLeft" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(-10, 0.1, -4)
+metadata/scene_key = "ammo"
+
+[node name="HealthLeft" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(-10, 0.1, 8)
+metadata/scene_key = "health"
+
+[node name="AmmoRight" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(10, 0.1, -4)
+metadata/scene_key = "ammo"
+
+[node name="HealthRight" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(10, 0.1, 8)
+metadata/scene_key = "health"
+
+[node name="AmmoHallway" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(20, 0.1, 40)
+metadata/scene_key = "ammo"
+
+[node name="HealthHallway" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(20, 0.1, 60)
+metadata/scene_key = "health"
+
+[node name="TargetSpawns" type="Node3D" parent="."]
+
+[node name="TargetLeftNorth" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(-8, 0.1, -10)
+
+[node name="TargetRightNorth" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(8, 0.1, -10)
+
+[node name="TargetLeftSouth" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(-8, 0.1, 10)
+
+[node name="TargetRightSouth" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(8, 0.1, 10)
+
+[node name="TargetHallway" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(20, 0.1, 50)
+
+[node name="MusicStereoSpawn" type="Marker3D" parent="."]
+position = Vector3(-8, 0.1, 0)
+rotation = Vector3(0, 1.5708, 0)
+
+[connection signal="body_entered" from="VoidRecovery" to="." method="_on_void_recovery_body_entered"]

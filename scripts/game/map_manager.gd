@@ -4,15 +4,21 @@ extends Node
 signal active_map_changed(map_id: String, arena: Node3D)
 
 const MAP_TEST_ARENA: String = "test_arena"
+const MAP_DUST2: String = "dust2"
+const MAP_BACKROOMS: String = "backrooms"
 const MAP_DOOM_E1M1: String = "doom_e1m1"
 const DEFAULT_MAP_ID: String = MAP_DOOM_E1M1
 const MAP_SCENE_PATHS: Dictionary = {
 	MAP_DOOM_E1M1: "res://scenes/maps/IronHangarArena.tscn",
 	MAP_TEST_ARENA: "res://scenes/maps/TestArena.tscn",
+	MAP_DUST2: "res://scenes/maps/Dust2Arena.tscn",
+	MAP_BACKROOMS: "res://scenes/maps/BackroomsArena.tscn",
 }
 const MAP_LABELS: Dictionary = {
 	MAP_DOOM_E1M1: "IRON HANGAR",
 	MAP_TEST_ARENA: "TEST ARENA",
+	MAP_DUST2: "DE_DUST2",
+	MAP_BACKROOMS: "BACKROOMS",
 }
 
 var selected_map_id: String = DEFAULT_MAP_ID
@@ -29,6 +35,10 @@ func activate_map(parent: Node, map_id: String) -> bool:
 
 	clear_active_map()
 	var map_scene: PackedScene = get_map_scene(safe_map_id)
+	if map_scene == null:
+		push_error("Map scene could not be loaded: %s" % safe_map_id)
+		active_map_id = ""
+		return false
 	active_arena = map_scene.instantiate() as Node3D
 	if active_arena == null:
 		push_error("Map %s must instantiate as Node3D." % safe_map_id)
@@ -62,6 +72,8 @@ func get_active_arena() -> Node3D:
 func get_map_options() -> Array[Dictionary]:
 	return [
 		{"id": MAP_DOOM_E1M1, "label": str(MAP_LABELS[MAP_DOOM_E1M1])},
+		{"id": MAP_DUST2, "label": str(MAP_LABELS[MAP_DUST2])},
+		{"id": MAP_BACKROOMS, "label": str(MAP_LABELS[MAP_BACKROOMS])},
 		{"id": MAP_TEST_ARENA, "label": str(MAP_LABELS[MAP_TEST_ARENA])},
 	]
 

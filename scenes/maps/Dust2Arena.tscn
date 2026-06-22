@@ -1,0 +1,167 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/dust2_arena.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://de_dust_2.glb" id="2_map"]
+[ext_resource type="Shader" path="res://shaders/dust2_boundary.gdshader" id="3_boundary_shader"]
+[ext_resource type="Texture2D" path="res://de_dust_2_0.jpg" id="4_dust2_atlas"]
+
+[sub_resource type="Environment" id="Environment_dust2"]
+
+[sub_resource type="BoxShape3D" id="Shape_boundary_x"]
+size = Vector3(1, 14, 94)
+
+[sub_resource type="BoxShape3D" id="Shape_boundary_z"]
+size = Vector3(79, 14, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_ceiling"]
+size = Vector3(79, 1, 94)
+
+[sub_resource type="BoxShape3D" id="Shape_void_recovery"]
+size = Vector3(100, 2, 112)
+
+[sub_resource type="ShaderMaterial" id="Material_perimeter_ground"]
+shader = ExtResource("3_boundary_shader")
+shader_parameter/atlas_texture = ExtResource("4_dust2_atlas")
+shader_parameter/atlas_region = Vector4(0.38, 0.1, 0.2, 0.2)
+shader_parameter/tile_scale = Vector2(14, 16)
+shader_parameter/color_tint = Color(0.72, 0.58, 0.42, 1)
+
+[sub_resource type="ShaderMaterial" id="Material_perimeter_wall"]
+shader = ExtResource("3_boundary_shader")
+shader_parameter/atlas_texture = ExtResource("4_dust2_atlas")
+shader_parameter/atlas_region = Vector4(0.01, 0.46, 0.2, 0.3)
+shader_parameter/tile_scale = Vector2(10, 3)
+shader_parameter/color_tint = Color(0.78, 0.7, 0.58, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_perimeter_ground"]
+material = SubResource("Material_perimeter_ground")
+size = Vector3(78, 0.5, 93)
+
+[sub_resource type="BoxMesh" id="Mesh_boundary_x"]
+material = SubResource("Material_perimeter_wall")
+size = Vector3(1, 14, 94)
+
+[sub_resource type="BoxMesh" id="Mesh_boundary_z"]
+material = SubResource("Material_perimeter_wall")
+size = Vector3(79, 14, 1)
+
+[node name="Dust2Arena" type="Node3D"]
+script = ExtResource("1_script")
+
+[node name="MapModel" parent="." instance=ExtResource("2_map")]
+position = Vector3(5.5, 0, 19.25)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_dust2")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-42, 36, 0)
+shadow_enabled = false
+
+[node name="VisualBounds" type="Node3D" parent="."]
+
+[node name="PerimeterGround" type="MeshInstance3D" parent="VisualBounds"]
+position = Vector3(0, -3.9, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_perimeter_ground")
+
+[node name="WestWall" type="MeshInstance3D" parent="VisualBounds"]
+position = Vector3(-39, 3, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_boundary_x")
+
+[node name="EastWall" type="MeshInstance3D" parent="VisualBounds"]
+position = Vector3(39, 3, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_boundary_x")
+
+[node name="NorthWall" type="MeshInstance3D" parent="VisualBounds"]
+position = Vector3(0, 3, -46.5)
+cast_shadow = 0
+mesh = SubResource("Mesh_boundary_z")
+
+[node name="SouthWall" type="MeshInstance3D" parent="VisualBounds"]
+position = Vector3(0, 3, 46.5)
+cast_shadow = 0
+mesh = SubResource("Mesh_boundary_z")
+
+[node name="GameplayBounds" type="StaticBody3D" parent="."]
+
+[node name="WestBoundary" type="CollisionShape3D" parent="GameplayBounds"]
+position = Vector3(-39, 3, 0)
+shape = SubResource("Shape_boundary_x")
+
+[node name="EastBoundary" type="CollisionShape3D" parent="GameplayBounds"]
+position = Vector3(39, 3, 0)
+shape = SubResource("Shape_boundary_x")
+
+[node name="NorthBoundary" type="CollisionShape3D" parent="GameplayBounds"]
+position = Vector3(0, 3, -46.5)
+shape = SubResource("Shape_boundary_z")
+
+[node name="SouthBoundary" type="CollisionShape3D" parent="GameplayBounds"]
+position = Vector3(0, 3, 46.5)
+shape = SubResource("Shape_boundary_z")
+
+[node name="CeilingBoundary" type="CollisionShape3D" parent="GameplayBounds"]
+position = Vector3(0, 10, 0)
+shape = SubResource("Shape_ceiling")
+
+[node name="VoidRecovery" type="Area3D" parent="."]
+position = Vector3(0, -6, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VoidRecovery"]
+shape = SubResource("Shape_void_recovery")
+
+[node name="SpawnPoints" type="Node3D" parent="."]
+
+[node name="Spawn0" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(-22.5, 0.05, -20.75)
+rotation = Vector3(0, 0.589, 0)
+
+[node name="Spawn1" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(29.5, 0.05, -8.75)
+rotation = Vector3(0, 3.14159, 0)
+
+[node name="Spawn2" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(-2.5, 0.05, 11.25)
+rotation = Vector3(0, -0.19635, 0)
+
+[node name="Spawn3" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
+position = Vector3(17.5, 0.05, -0.75)
+rotation = Vector3(0, -2.55254, 0)
+
+[node name="PickupSpawns" type="Node3D" parent="."]
+
+[node name="AmmoWest" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(-14.5, 0.15, -20.75)
+metadata/scene_key = "ammo"
+
+[node name="HealthCenter" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(5.5, 0.1, 11.25)
+metadata/scene_key = "health"
+
+[node name="AmmoNorthEast" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(17.5, 1.75, -24.75)
+metadata/scene_key = "ammo"
+
+[node name="HealthEast" type="Marker3D" parent="PickupSpawns" groups=["pickup_spawns"]]
+position = Vector3(25.5, 0.1, 11.25)
+metadata/scene_key = "health"
+
+[node name="TargetSpawns" type="Node3D" parent="."]
+
+[node name="TargetWest" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(-26.5, 0.1, 11.25)
+
+[node name="TargetCenter" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(21.5, -0.3, -16.75)
+
+[node name="TargetSouth" type="Marker3D" parent="TargetSpawns" groups=["target_spawns"]]
+position = Vector3(33.5, 0.5, -16.75)
+
+[node name="MusicStereoSpawn" type="Marker3D" parent="."]
+position = Vector3(-18.5, 0.65, -0.75)
+rotation = Vector3(0, 1.5708, 0)
+
+[connection signal="body_entered" from="VoidRecovery" to="." method="_on_void_recovery_body_entered"]

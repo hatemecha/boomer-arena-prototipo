@@ -161,6 +161,15 @@ func request_network_pickup(pickup_id: int, player_id: int) -> bool:
 
 	_server_request_pickup.rpc_id(1, pickup_id, player_id)
 	return true
+
+
+func recover_player_from_world_bounds(player: PlayerController) -> void:
+	if player == null or not is_instance_valid(player):
+		push_warning("Cannot recover an invalid out-of-bounds player.")
+		return
+	if _is_networked() and not multiplayer.is_server():
+		return
+	_respawn_player(player)
 #endregion
 
 

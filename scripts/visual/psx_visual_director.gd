@@ -19,6 +19,7 @@ enum LensPreset {
 const PSX_SHADER: Shader = preload("res://shaders/psx_palette_filter.gdshader")
 const PSX_FAST_SHADER: Shader = preload("res://shaders/psx_palette_fast.gdshader")
 const EXTERIOR_SUN_LIGHT_NAME: StringName = &"ExteriorSunLight"
+const ACTIVE_ARENA_NODE_PATH: NodePath = ^"ActiveArena"
 const ARENA_LIGHT_PREFIX: String = "ArenaLight"
 const AISLE_FILL_LIGHT_PREFIX: String = "AisleFill"
 const WINDOW_FILL_LIGHT_PREFIX: String = "WindowFill"
@@ -236,12 +237,31 @@ func _ensure_scene_cache() -> void:
 
 	_clear_scene_cache()
 
-	var scene_root: Node = get_tree().current_scene
+	var scene_root: Node = _get_lighting_scene_root()
 	if scene_root == null:
 		return
 
 	_collect_scene_nodes(scene_root)
 	_scene_cache_valid = true
+
+
+func _get_lighting_scene_root() -> Node:
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		_warn_missing_lighting_scene_root_once()
+		return null
+
+	var active_arena: Node = scene_root.get_node_or_null(ACTIVE_ARENA_NODE_PATH)
+	if active_arena != null:
+		return active_arena
+	return scene_root
+
+
+func _warn_missing_lighting_scene_root_once() -> void:
+	if _warned_missing_scene_root:
+		return
+	_warned_missing_scene_root = true
+	push_warning("PSXVisualDirector could not resolve a scene root for lighting.")
 
 
 func _clear_scene_cache() -> void:
