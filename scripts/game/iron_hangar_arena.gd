@@ -73,6 +73,7 @@ func _create_aisle_fill_light(light_name: String, light_position: Vector3) -> vo
 
 func _configure_gameplay_markers() -> void:
 	ArenaMarkersHelper.ensure_spawn_points(self)
+	ArenaMarkersHelper.ensure_void_recovery(self)
 	ArenaMarkersHelper.ensure_music_stereo_spawn(self)
 	ArenaMarkersHelper.ensure_arena_cameras(self)
 	ArenaMarkersHelper.ensure_pickup_markers(self, IRON_HANGAR_PICKUP_DEFS)

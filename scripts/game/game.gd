@@ -561,14 +561,14 @@ func _activate_map(map_id: String, should_spawn_world_content: bool = true) -> v
 	_selected_map_id = safe_map_id
 
 	if _map_manager.get_active_arena() != null and _map_manager.active_map_id == safe_map_id:
-		_finish_arena_activation.call_deferred(should_spawn_world_content)
+		_finish_arena_activation(should_spawn_world_content)
 		return
 
 	_clear_world_content()
 	if not _map_manager.activate_map(self, safe_map_id):
 		return
 
-	_finish_arena_activation.call_deferred(should_spawn_world_content)
+	_finish_arena_activation(should_spawn_world_content)
 
 
 func _finish_arena_activation(should_spawn_world_content: bool) -> void:
@@ -604,6 +604,16 @@ func _get_active_arena() -> Node3D:
 	if _map_manager == null:
 		return null
 	return _map_manager.get_active_arena()
+
+
+func _apply_active_arena_player_profile(player: PlayerController) -> void:
+	var active_arena: Node3D = _get_active_arena()
+	if player == null:
+		return
+	if active_arena != null and active_arena.has_method("apply_player_movement_profile"):
+		active_arena.call("apply_player_movement_profile", player)
+	elif player.has_method("clear_map_movement_override"):
+		player.clear_map_movement_override()
 
 
 func _get_music_stereo() -> MusicStereo:
@@ -950,6 +960,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 		network_controller.network_sync_player_display_name.rpc(player_id, player.display_name)
 	if is_local_player and PlayerSettingsAccess.has_settings():
 		PlayerSettingsAccess.apply_to_player(player)
+	_apply_active_arena_player_profile(player)
 	player.input_prefix = ""
 	player.mouse_look_enabled = true
 	player.set_multiplayer_authority(peer_id)

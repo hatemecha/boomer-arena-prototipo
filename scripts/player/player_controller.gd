@@ -4,6 +4,7 @@ extends CharacterBody3D
 const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.gd")
 const PlayerWeaponMotionScript: GDScript = preload("res://scripts/player/player_weapon_motion.gd")
 const PlayerBodyVisualScript: GDScript = preload("res://scripts/player/player_body_visual.gd")
+const FloorSnapScript: GDScript = preload("res://scripts/game/floor_snap.gd")
 const DEBUG_STATS_INTERVAL: float = 0.2
 
 enum DebugCameraMode {
@@ -33,6 +34,12 @@ signal pickup_interaction_changed(prompt: String, progress: float, is_visible: b
 @export_range(0.1, 80.0) var ground_acceleration: float = 52.0
 @export_range(0.1, 40.0) var air_acceleration: float = 16.0
 @export_range(0.1, 60.0) var friction: float = 24.0
+@export var automatic_step_up_enabled: bool = true
+@export_range(0.15, 1.2) var step_height: float = 0.55
+@export_range(0.1, 1.0) var step_search_distance: float = 0.45
+@export_range(0.0, 0.75) var floor_snap_length_override: float = 0.35
+@export_range(30.0, 75.0) var floor_max_angle_degrees: float = 52.0
+@export_range(-80.0, -8.0) var void_fall_y: float = -24.0
 
 @export_group("Look And Aim")
 @export_range(0.01, 1.0) var mouse_sensitivity: float = 0.25
@@ -238,12 +245,19 @@ var _default_weapon_rotation_sway_amount: float = 0.0
 var _default_weapon_movement_sway_amount: float = 0.0
 var _default_weapon_jump_drop: float = 0.0
 var _default_weapon_landing_kick: float = 0.0
+var _movement_defaults_cached: bool = false
+var _map_movement_override_active: bool = false
+var _default_jump_velocity: float = 0.0
+var _default_double_jump_enabled: bool = true
+var _default_wall_jump_enabled: bool = true
+var _default_max_air_jumps: int = 1
 var _debug_stats_accumulator: float = 0.0
 
 
 #region Ciclo de vida e input
 func _ready() -> void:
 	DefaultInputActions.ensure_default_actions()
+	_configure_movement_body()
 	camera.fov = fov
 	_cache_standing_pose()
 	_cache_motion_defaults()
@@ -317,6 +331,7 @@ func _physics_process(delta: float) -> void:
 
 	_handle_gamepad_look(delta)
 	_handle_movement(delta)
+	_check_void_fall()
 	if _gameplay_input_enabled:
 		_handle_weapon_input()
 	_debug_stats_accumulator += delta
@@ -396,6 +411,29 @@ func set_pickup_interaction(prompt: String, progress: float, is_visible: bool, c
 	pickup_interaction_changed.emit(prompt, clampf(progress, 0.0, 1.0), is_visible, can_collect)
 
 
+func apply_map_movement_override(
+	next_jump_velocity: float = -1.0,
+	allow_double_jump: bool = true,
+	allow_wall_jump: bool = true,
+	next_max_air_jumps: int = -1
+) -> void:
+	_cache_movement_defaults()
+	_map_movement_override_active = true
+	if next_jump_velocity >= 0.0:
+		jump_velocity = next_jump_velocity
+	double_jump_enabled = allow_double_jump
+	wall_jump_enabled = allow_wall_jump
+	if next_max_air_jumps >= 0:
+		max_air_jumps = next_max_air_jumps
+
+
+func clear_map_movement_override() -> void:
+	if not _map_movement_override_active:
+		return
+	_restore_movement_defaults()
+	_map_movement_override_active = false
+
+
 func apply_performance_profile(profile: int) -> void:
 	var safe_profile := clampi(profile, 0, 2)
 	_apply_visual_motion_profile(safe_profile)
@@ -422,6 +460,23 @@ func _apply_visual_motion_profile(profile: int) -> void:
 			_scale_weapon_motion(0.18)
 		_:
 			_restore_visual_motion_defaults()
+
+
+func _cache_movement_defaults() -> void:
+	if _movement_defaults_cached:
+		return
+	_default_jump_velocity = jump_velocity
+	_default_double_jump_enabled = double_jump_enabled
+	_default_wall_jump_enabled = wall_jump_enabled
+	_default_max_air_jumps = max_air_jumps
+	_movement_defaults_cached = true
+
+
+func _restore_movement_defaults() -> void:
+	jump_velocity = _default_jump_velocity
+	double_jump_enabled = _default_double_jump_enabled
+	wall_jump_enabled = _default_wall_jump_enabled
+	max_air_jumps = _default_max_air_jumps
 
 
 func _cache_motion_defaults() -> void:
@@ -749,21 +804,10 @@ func restore_match_control() -> void:
 
 
 func _snap_spawn_position(spawn_position: Vector3) -> Vector3:
-	var snapped_position: Vector3 = spawn_position
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if space_state == null:
-		return snapped_position
-
-	var query := PhysicsRayQueryParameters3D.create(
-		spawn_position + Vector3.UP * 4.0,
-		spawn_position + Vector3.DOWN * 8.0
-	)
-	query.exclude = [self]
-	query.hit_back_faces = false
-	var hit: Dictionary = space_state.intersect_ray(query)
-	if not hit.is_empty():
-		snapped_position.y = float(hit.position.y)
-	return snapped_position
+		return spawn_position
+	return FloorSnapScript.snap_spawn_position(spawn_position, space_state)
 
 
 func set_body_color(color: Color) -> void:
@@ -822,9 +866,96 @@ func _handle_movement(delta: float) -> void:
 				_air_jumps_used += 1
 			velocity.y = jump_velocity
 
+	if automatic_step_up_enabled:
+		_try_automatic_step_up(delta)
+
 	move_and_slide()
 	if not was_on_floor_before_move and is_on_floor():
 		_landing_offset = landing_camera_dip
+
+
+func _configure_movement_body() -> void:
+	floor_snap_length = floor_snap_length_override
+	floor_max_angle = deg_to_rad(floor_max_angle_degrees)
+	floor_stop_on_slope = false
+	floor_block_on_wall = false
+
+
+func _check_void_fall() -> void:
+	if not _is_locally_controlled() or not _gameplay_input_enabled or _is_dead:
+		return
+	if global_position.y > void_fall_y:
+		return
+
+	var game_root := get_parent()
+	if game_root == null or not game_root.has_method("recover_player_from_world_bounds"):
+		return
+	game_root.call_deferred("recover_player_from_world_bounds", self)
+
+
+func _try_automatic_step_up(delta: float) -> void:
+	if not is_on_floor() or not _gameplay_input_enabled or _is_dead:
+		return
+
+	var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
+	if horizontal_velocity.length_squared() < 0.01:
+		return
+
+	var motion := horizontal_velocity * delta
+	if motion.length_squared() < 0.000001:
+		return
+
+	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if space_state == null:
+		return
+
+	var motion_direction: Vector3 = motion.normalized()
+	var search_distance: float = maxf(step_search_distance, motion.length() + 0.08)
+	var max_step_height: float = step_height
+	if _is_crouching:
+		max_step_height *= crouch_height_multiplier
+
+	var foot_position: Vector3 = global_position
+	var low_from: Vector3 = foot_position + Vector3.UP * 0.05
+	var low_to: Vector3 = low_from + motion_direction * search_distance
+	var low_query := PhysicsRayQueryParameters3D.create(low_from, low_to)
+	low_query.exclude = [get_rid()]
+	low_query.collision_mask = collision_mask
+	low_query.hit_back_faces = false
+	var low_hit: Dictionary = space_state.intersect_ray(low_query)
+	if low_hit.is_empty():
+		return
+
+	var low_normal: Vector3 = low_hit.get("normal", Vector3.UP)
+	if absf(low_normal.y) > 0.35:
+		return
+
+	var high_from: Vector3 = foot_position + Vector3.UP * max_step_height + motion_direction * 0.12
+	var high_to: Vector3 = high_from + motion_direction * search_distance
+	var high_query := PhysicsRayQueryParameters3D.create(high_from, high_to)
+	high_query.exclude = [get_rid()]
+	high_query.collision_mask = collision_mask
+	high_query.hit_back_faces = false
+	if not space_state.intersect_ray(high_query).is_empty():
+		return
+
+	var floor_from: Vector3 = foot_position + Vector3.UP * max_step_height
+	var floor_to: Vector3 = floor_from - Vector3.UP * (max_step_height + 0.2)
+	var floor_query := PhysicsRayQueryParameters3D.create(floor_from, floor_to)
+	floor_query.exclude = [get_rid()]
+	floor_query.collision_mask = collision_mask
+	floor_query.hit_back_faces = false
+	var floor_hit: Dictionary = space_state.intersect_ray(floor_query)
+	if floor_hit.is_empty():
+		return
+
+	var target_y: float = float(floor_hit.position.y)
+	var rise: float = target_y - global_position.y
+	if rise <= 0.001 or rise > max_step_height:
+		return
+
+	global_position.y = target_y
+	velocity.y = 0.0
 
 
 func _update_wall_jump_timers(delta: float, is_on_floor_now: bool) -> void:

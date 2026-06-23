@@ -4,12 +4,14 @@ extends GlImportedArena
 const DUST_LIGHT_PREFIX: String = "Dust2Light"
 const DUST_SUN_COLOR: Color = Color(1.0, 0.82, 0.58)
 const DUST_AMBIENT: Color = Color(0.72, 0.58, 0.38)
+const DUST2_JUMP_VELOCITY: float = 4.65
 
 var _visual_director: PSXVisualDirector
 
 
 func _ready() -> void:
 	super._ready()
+	ArenaMarkersHelper.ensure_void_recovery(self)
 	_bind_visual_override()
 
 
@@ -57,6 +59,12 @@ func _apply_dust2_visuals(_time_of_day_preset: PSXVisualDirector.TimeOfDayPreset
 		omni_light.light_energy = 1.2
 		omni_light.shadow_enabled = false
 		omni_light.visible = true
+
+
+func apply_player_movement_profile(player: PlayerController) -> void:
+	if player == null:
+		return
+	player.apply_map_movement_override(DUST2_JUMP_VELOCITY, false, false, 0)
 
 
 func _configure_dust2_environment(environment: Environment) -> void:

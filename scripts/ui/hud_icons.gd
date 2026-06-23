@@ -1,8 +1,10 @@
 class_name HudIcons
 extends RefCounted
 
+const STAT_FONT: FontFile = preload("res://fonts/2097.ttf")
 const ICON_SIZE: Vector2 = Vector2(16.0, 16.0)
 const TAG_MIN_SIZE: Vector2 = Vector2(72.0, 16.0)
+const STAT_FONT_SIZE: int = 14
 
 const HEALTH: String = "VIDA"
 const WEAPON: String = "ARMA"
@@ -48,6 +50,15 @@ static func make_icon(texture: Texture2D, tint: Color = HUD_TINT) -> TextureRect
 	return icon
 
 
+static func apply_stat_label_theme(label: Label, font_size: int = STAT_FONT_SIZE) -> void:
+	if label == null:
+		return
+	label.add_theme_font_override("font", STAT_FONT)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+	label.add_theme_constant_override("outline_size", 1)
+
+
 static func make_tag(text: String, tint: Color = HUD_TAG_TINT) -> Label:
 	var tag := Label.new()
 	tag.name = "Tag"
@@ -55,7 +66,7 @@ static func make_tag(text: String, tint: Color = HUD_TAG_TINT) -> Label:
 	tag.text = text
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	tag.modulate = tint
-	tag.add_theme_font_size_override("font_size", 14)
+	apply_stat_label_theme(tag)
 	return tag
 
 
@@ -71,6 +82,8 @@ static func make_stat_row(row_name: String, label_name: String, marker: Variant)
 	row.add_child(marker_control)
 	var label := Label.new()
 	label.name = label_name
+	label.modulate = HUD_TINT
+	apply_stat_label_theme(label)
 	row.add_child(label)
 	return {
 		"row": row,

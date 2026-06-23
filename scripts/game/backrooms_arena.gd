@@ -10,6 +10,7 @@ var _visual_director: PSXVisualDirector
 
 func _ready() -> void:
 	super._ready()
+	ArenaMarkersHelper.ensure_void_recovery(self)
 	_bind_visual_override()
 
 

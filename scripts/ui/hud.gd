@@ -187,12 +187,17 @@ func apply_accent_theme() -> void:
 func _apply_hud_typography() -> void:
 	for node in find_children("*", "Label", true, false):
 		var label := node as Label
-		label.add_theme_font_override(
-			"font",
-			DISPLAY_FONT if label.name in [&"MatchObjective", &"ScoreboardTitle"] else DATA_FONT
-		)
-		label.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
-		label.add_theme_constant_override("outline_size", 1)
+		if label.name in [&"MatchObjective", &"ScoreboardTitle"]:
+			label.add_theme_font_override("font", DISPLAY_FONT)
+			label.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+			label.add_theme_constant_override("outline_size", 1)
+		elif _is_stats_row_label(label):
+			HudIcons.apply_stat_label_theme(label)
+		else:
+			label.add_theme_font_override("font", DATA_FONT)
+			label.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
+			label.add_theme_constant_override("outline_size", 1)
+	_apply_stats_value_tints()
 
 
 func reset_motion() -> void:
@@ -625,7 +630,7 @@ func _cache_crosshair_capabilities() -> void:
 
 
 func _update_fps_label() -> void:
-	_set_label_text(fps_label, "%d FPS" % Engine.get_frames_per_second())
+	_set_label_text(fps_label, "%d" % Engine.get_frames_per_second())
 
 
 func _update_debug_labels() -> void:
@@ -701,18 +706,12 @@ func add_kill_feed_entry(killer_name: String, victim_name: String, killer_id: in
 	tag.custom_minimum_size = Vector2(72.0, 16.0)
 	tag.text = "KILL"
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	tag.add_theme_font_override("font", DISPLAY_FONT)
-	tag.add_theme_font_size_override("font_size", 14)
-	tag.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
-	tag.add_theme_constant_override("outline_size", 1)
+	HudIcons.apply_stat_label_theme(tag)
 	tag.modulate = HudIcons.get_tag_tint()
 
 	var entry := Label.new()
 	entry.text = "%s → %s" % [killer_name.to_upper(), victim_name.to_upper()]
-	entry.add_theme_font_override("font", DATA_FONT)
-	entry.add_theme_font_size_override("font_size", 14)
-	entry.add_theme_color_override("font_outline_color", Color(0.015, 0.02, 0.025, 0.92))
-	entry.add_theme_constant_override("outline_size", 1)
+	HudIcons.apply_stat_label_theme(entry)
 	entry.modulate = HudIcons.get_accent_color() if killer_id == _local_player_id else HudIcons.HUD_TINT
 
 	row.add_child(tag)
@@ -986,6 +985,24 @@ func _apply_panel_offset(control: Control, base_offsets: Vector4) -> void:
 	control.offset_right = base_offsets.z + _hud_motion_offset.x
 	control.offset_bottom = base_offsets.w + _hud_motion_offset.y
 	control.rotation = 0.0
+
+
+func _is_stats_row_label(label: Label) -> bool:
+	if label == null or stats == null:
+		return false
+	var row := label.get_parent()
+	if not (row is HBoxContainer):
+		return false
+	return row.get_parent() == stats
+
+
+func _apply_stats_value_tints() -> void:
+	for row in stats.get_children() if stats != null else []:
+		if not (row is HBoxContainer):
+			continue
+		for child in row.get_children():
+			if child is Label and child.name != "Tag":
+				child.modulate = HudIcons.HUD_TINT
 
 
 func _ensure_optional_labels() -> void:

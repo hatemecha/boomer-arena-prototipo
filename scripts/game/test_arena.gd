@@ -204,6 +204,7 @@ func _spawn_prop_scene(
 
 func _configure_gameplay_markers() -> void:
 	ArenaMarkersHelper.ensure_spawn_points(self)
+	ArenaMarkersHelper.ensure_void_recovery(self)
 	ArenaMarkersHelper.ensure_music_stereo_spawn(self)
 	ArenaMarkersHelper.ensure_arena_cameras(self)
 	ArenaMarkersHelper.ensure_pickup_markers(self, TEST_ARENA_PICKUP_DEFS)

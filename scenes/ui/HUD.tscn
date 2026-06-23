@@ -91,7 +91,7 @@ modulate = Color(1, 0.12, 0.05, 1)
 
 [node name="FpsLabel" type="Label" parent="Stats/FpsRow"]
 layout_mode = 2
-text = "0 FPS"
+text = "0"
 
 [node name="PositionRow" type="HBoxContainer" parent="Stats"]
 visible = false

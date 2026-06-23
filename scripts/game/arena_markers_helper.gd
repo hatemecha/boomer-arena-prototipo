@@ -100,6 +100,55 @@ static func ensure_pickup_markers(arena: Node3D, pickup_defs: Array[Dictionary])
 		pickup_root.add_child(marker)
 
 
+static func ensure_void_recovery(
+	arena: Node3D,
+	center: Vector3 = Vector3(0.0, -12.0, 0.0),
+	size: Vector3 = Vector3(160.0, 24.0, 160.0)
+) -> void:
+	var void_area: Area3D
+	if arena.has_node("VoidRecovery"):
+		void_area = arena.get_node("VoidRecovery") as Area3D
+	else:
+		void_area = Area3D.new()
+		void_area.name = "VoidRecovery"
+		void_area.monitoring = true
+		void_area.monitorable = false
+		arena.add_child(void_area)
+		var collider := CollisionShape3D.new()
+		collider.name = "CollisionShape3D"
+		void_area.add_child(collider)
+
+	void_area.position = center
+	var shape_node := void_area.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null:
+		return
+
+	var box := shape_node.shape as BoxShape3D
+	if box == null:
+		box = BoxShape3D.new()
+		shape_node.shape = box
+	box.size = size
+
+	if arena.has_method("_on_void_recovery_body_entered"):
+		var handler := Callable(arena, "_on_void_recovery_body_entered")
+		if not void_area.body_entered.is_connected(handler):
+			void_area.body_entered.connect(handler)
+	elif not void_area.body_entered.is_connected(_on_void_recovery_body_entered):
+		void_area.body_entered.connect(_on_void_recovery_body_entered.bind(arena))
+
+
+static func _on_void_recovery_body_entered(arena: Node3D, body: Node3D) -> void:
+	var player := body as PlayerController
+	if player == null:
+		return
+
+	var game_root := arena.get_parent()
+	if game_root == null or not game_root.has_method("recover_player_from_world_bounds"):
+		push_error("%s requires a game root that can recover out-of-bounds players." % arena.name)
+		return
+	game_root.call_deferred("recover_player_from_world_bounds", player)
+
+
 static func notify_visual_director_scene_changed(arena: Node3D) -> void:
 	var game_root: Node = arena.get_parent()
 	if game_root == null:
