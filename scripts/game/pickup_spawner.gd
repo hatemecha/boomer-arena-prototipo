@@ -44,7 +44,14 @@ func load_from_arena(arena: Node3D) -> void:
 				"position": marker.global_position,
 			})
 
-	pickup_spawns = loaded_spawns if not loaded_spawns.is_empty() else DEFAULT_PICKUP_SPAWNS.duplicate(true)
+	pickup_spawns = loaded_spawns if not loaded_spawns.is_empty() else _use_default_pickup_spawns(arena)
+
+
+func _use_default_pickup_spawns(arena: Node3D) -> Array[Dictionary]:
+	push_warning(
+		"PickupSpawner: arena '%s' has no PickupSpawns markers; using default layout." % arena.name
+	)
+	return DEFAULT_PICKUP_SPAWNS.duplicate(true)
 
 
 func spawn_pickups(parent: Node) -> void:

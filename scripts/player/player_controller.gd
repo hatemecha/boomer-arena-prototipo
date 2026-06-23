@@ -686,6 +686,20 @@ func apply_network_combat_state(active_weapon_index: int, is_aiming_state: bool)
 	_update_third_person_weapon_visibility()
 
 
+func apply_network_ammo(active_weapon_index: int, ammo_in_mag: int, reserve_ammo: int) -> void:
+	if not _is_locally_controlled():
+		return
+	var weapon_index: int = clampi(active_weapon_index, 0, maxi(_weapons.size() - 1, 0))
+	if weapon_index != _active_weapon_index:
+		_set_active_weapon(weapon_index)
+	var active_weapon: WeaponBase = weapon
+	if active_weapon == null:
+		return
+	active_weapon.ammo_in_mag = clampi(ammo_in_mag, 0, active_weapon.mag_size)
+	active_weapon.reserve_ammo = maxi(reserve_ammo, 0)
+	active_weapon.ammo_changed.emit(active_weapon.ammo_in_mag, active_weapon.reserve_ammo)
+
+
 func set_dead(value: bool) -> void:
 	_is_dead = value
 	_is_aiming = false
@@ -1248,6 +1262,7 @@ func _update_look_inertia(delta: float) -> void:
 	_camera_yaw_inertia = lerpf(_camera_yaw_inertia + look_kick.y, 0.0, return_weight)
 	_camera_pitch_inertia = clampf(_camera_pitch_inertia, -2.6, 2.6)
 	_camera_yaw_inertia = clampf(_camera_yaw_inertia, -2.2, 2.2)
+	_last_view_delta = Vector2.ZERO
 
 
 func _get_horizontal_speed() -> float:
@@ -1400,6 +1415,7 @@ func _set_active_weapon(index: int) -> void:
 	if weapon != null and weapon.fired.is_connected(_on_weapon_fired):
 		weapon.fired.disconnect(_on_weapon_fired)
 		weapon.is_aiming = false
+		weapon.cancel_reload()
 		if _weapon_default_transforms.has(weapon):
 			weapon.transform = _weapon_default_transforms[weapon]
 

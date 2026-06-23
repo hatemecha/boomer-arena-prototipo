@@ -5,6 +5,8 @@ const PlayerSettingsAccess = preload("res://scripts/game/player_settings_access.
 const ArenaMenuCameraScript: GDScript = preload("res://scripts/ui/arena_menu_camera.gd")
 const MapManagerScript: GDScript = preload("res://scripts/game/map_manager.gd")
 const WorldContentManagerScript: GDScript = preload("res://scripts/game/world_content_manager.gd")
+const NetworkGameControllerScript: GDScript = preload("res://scripts/game/network_game_controller.gd")
+const PlayerLifecycleManagerScript: GDScript = preload("res://scripts/game/player_lifecycle_manager.gd")
 
 @export var player_scene: PackedScene = preload("res://scenes/player/Player.tscn")
 @export var ammo_pickup_scene: PackedScene = preload("res://scenes/pickups/AmmoPickup.tscn")
@@ -36,7 +38,9 @@ var _lobby_layer: CanvasLayer
 var _lobby_menu: LanLobbyMenu
 var _visual_director: PSXVisualDirector
 var _disco_director: MusicDiscoDirector
-var _map_manager: Node
+var network_controller: NetworkGameController
+var player_lifecycle: PlayerLifecycleManager
+var _map_manager: MapManager
 var _world_content: Node
 var _spawn_manager: SpawnManager
 var _pickup_spawner: PickupSpawner
@@ -148,7 +152,7 @@ func request_network_damage(victim_player_id: int, amount: int, attacker_player_
 		push_warning("Ignoring invalid network damage request.")
 		return true
 
-	_server_request_damage.rpc_id(1, victim_player_id, amount, attacker_player_id, shot_id)
+	network_controller.server_request_damage.rpc_id(1, victim_player_id, amount, attacker_player_id, shot_id)
 	return true
 
 
@@ -159,7 +163,7 @@ func request_network_pickup(pickup_id: int, player_id: int) -> bool:
 		push_warning("Ignoring invalid network pickup request.")
 		return true
 
-	_server_request_pickup.rpc_id(1, pickup_id, player_id)
+	network_controller.server_request_pickup.rpc_id(1, pickup_id, player_id)
 	return true
 
 
@@ -167,7 +171,11 @@ func recover_player_from_world_bounds(player: PlayerController) -> void:
 	if player == null or not is_instance_valid(player):
 		push_warning("Cannot recover an invalid out-of-bounds player.")
 		return
-	if _is_networked() and not multiplayer.is_server():
+	if _is_networked():
+		if multiplayer.is_server():
+			_respawn_player(player)
+		elif player.is_local_controlled():
+			network_controller.server_request_void_recovery.rpc_id(1, player.player_id)
 		return
 	_respawn_player(player)
 #endregion
@@ -209,6 +217,16 @@ func _setup_managers() -> void:
 	_world_content.music_stereo_spawned.connect(_on_music_stereo_spawned)
 	_world_content.music_stereo_playback_toggle_requested.connect(_on_music_stereo_playback_toggle_requested)
 	_world_content.music_stereo_next_track_requested.connect(_on_music_stereo_next_track_requested)
+
+	network_controller = NetworkGameControllerScript.new() as NetworkGameController
+	network_controller.name = "NetworkGameController"
+	add_child(network_controller)
+	network_controller.bind_game(self)
+
+	player_lifecycle = PlayerLifecycleManagerScript.new() as PlayerLifecycleManager
+	player_lifecycle.name = "PlayerLifecycleManager"
+	add_child(player_lifecycle)
+	player_lifecycle.configure(self, _spawn_manager, _match_manager, player_corpse_scene)
 
 
 func _setup_network_manager() -> void:
@@ -258,7 +276,6 @@ func _load_spawn_points_from_arena() -> void:
 	if active_arena == null:
 		return
 	_spawn_manager.load_from_arena(active_arena)
-	_pickup_spawner.load_from_arena(active_arena)
 	if _death_cinematic != null and _death_cinematic.has_method("setup"):
 		_death_cinematic.call("setup", active_arena)
 
@@ -624,9 +641,9 @@ func _start_network_match_as_server() -> void:
 
 	_prepare_match_world()
 	_register_network_peer(1)
-	_network_load_map.rpc(_selected_map_id)
-	_network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
-	_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
+	network_controller.network_load_map.rpc(_selected_map_id)
+	network_controller.network_apply_time_of_day_preset.rpc(_selected_time_of_day_preset)
+	network_controller.network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	_sync_score_snapshot_to_peers()
 	_refresh_lan_discovery_host()
 
@@ -652,7 +669,7 @@ func _prepare_client_match() -> void:
 	_reset_session()
 	_pending_match_rules = {}
 	_match_manager.apply_score_snapshot({}, true)
-	_request_full_sync.rpc_id(1)
+	network_controller.request_full_sync.rpc_id(1)
 
 
 func _start_lan_host() -> void:
@@ -862,11 +879,11 @@ func _register_network_peer(peer_id: int) -> void:
 	_match_manager.ensure_player(player_id)
 
 	if peer_id != 1:
-		_network_load_map.rpc_id(peer_id, _selected_map_id)
+		network_controller.network_load_map.rpc_id(peer_id, _selected_map_id)
 	var spawn_transform: Transform3D = _get_fresh_spawn_transform()
 	_spawn_or_update_player(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
-	_network_spawn_player.rpc(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
-	_network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
+	network_controller.network_spawn_player.rpc(peer_id, player_id, spawn_transform.origin, spawn_transform.basis.get_euler().y)
+	network_controller.network_apply_time_of_day_preset.rpc_id(peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(peer_id)
 	_sync_pickups_to_peer(peer_id)
 	_sync_music_stereo_to_peer(peer_id)
@@ -880,7 +897,7 @@ func _sync_player_names_to_peer(peer_id: int) -> void:
 	for player in players:
 		if player == null:
 			continue
-		_network_sync_player_display_name.rpc_id(peer_id, player.player_id, player.display_name)
+		network_controller.network_sync_player_display_name.rpc_id(peer_id, player.player_id, player.display_name)
 
 
 func _allocate_player_id() -> int:
@@ -930,7 +947,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 		player.display_name = "Player %d" % player_id
 	_match_manager.set_player_name(player_id, player.display_name)
 	if _is_networked() and multiplayer.is_server():
-		_network_sync_player_display_name.rpc(player_id, player.display_name)
+		network_controller.network_sync_player_display_name.rpc(player_id, player.display_name)
 	if is_local_player and PlayerSettingsAccess.has_settings():
 		PlayerSettingsAccess.apply_to_player(player)
 	player.input_prefix = ""
@@ -955,7 +972,7 @@ func _spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vecto
 		_setup_options_menu()
 		_begin_local_gameplay_warmup(player)
 		if _is_networked() and not multiplayer.is_server():
-			_network_report_display_name.rpc_id(1, player_id, player.display_name)
+			network_controller.network_report_display_name.rpc_id(1, player_id, player.display_name)
 
 	return player
 
@@ -1080,7 +1097,7 @@ func _send_local_player_state() -> void:
 	if multiplayer.is_server():
 		_broadcast_player_state(_player)
 	else:
-		_server_receive_player_state.rpc_id(
+		network_controller.server_receive_player_state.rpc_id(
 			1,
 			_player.player_id,
 			_player.global_position,
@@ -1113,9 +1130,9 @@ func _process_network_ping(delta: float) -> void:
 			var peer_id: int = int(raw_peer_id)
 			if peer_id == 1:
 				continue
-			_network_ping_client.rpc_id(peer_id, now_msec)
+			network_controller.network_ping_client.rpc_id(peer_id, now_msec)
 	else:
-		_network_ping_server.rpc_id(1, now_msec)
+		network_controller.network_ping_server.rpc_id(1, now_msec)
 
 
 func _broadcast_player_state(player: PlayerController) -> void:
@@ -1152,7 +1169,7 @@ func _broadcast_player_state_values(
 	active_weapon_index: int,
 	is_aiming_state: bool
 ) -> void:
-	_network_receive_player_state.rpc(
+	network_controller.network_receive_player_state.rpc(
 		peer_id,
 		player_id,
 		position,
@@ -1176,7 +1193,7 @@ func _sync_all_players_to_peer(peer_id: int) -> void:
 		var player: PlayerController = _get_player_by_peer_id(synced_peer_id)
 		if player == null:
 			continue
-		_network_spawn_player.rpc_id(
+		network_controller.network_spawn_player.rpc_id(
 			peer_id,
 			synced_peer_id,
 			synced_player_id,
@@ -1193,13 +1210,13 @@ func _sync_pickups_to_peer(peer_id: int) -> void:
 		var pickup: PickupBase = pickup_node as PickupBase
 		if pickup == null:
 			continue
-		_network_set_pickup_available.rpc_id(peer_id, pickup.pickup_id, pickup.is_available())
+		network_controller.network_set_pickup_available.rpc_id(peer_id, pickup.pickup_id, pickup.is_available())
 
 
 func _sync_score_snapshot_to_peers() -> void:
 	if not _is_networked() or not multiplayer.is_server():
 		return
-	_network_sync_score_snapshot.rpc(_match_manager.get_score_snapshot(), _match_manager.match_running)
+	network_controller.network_sync_score_snapshot.rpc(_match_manager.get_score_snapshot(), _match_manager.match_running)
 
 
 func _sync_music_stereo_to_peer(peer_id: int) -> void:
@@ -1207,7 +1224,7 @@ func _sync_music_stereo_to_peer(peer_id: int) -> void:
 	if music_stereo == null or not _is_networked() or not multiplayer.is_server() or peer_id == 1:
 		return
 
-	_network_apply_music_stereo_state.rpc_id(
+	network_controller.network_apply_music_stereo_state.rpc_id(
 		peer_id,
 		music_stereo.get_track_index(),
 		music_stereo.is_playing(),
@@ -1218,13 +1235,27 @@ func _sync_music_stereo_to_peer(peer_id: int) -> void:
 func _sync_player_health_to_peers(player: PlayerController) -> void:
 	if player == null or not _is_networked() or not multiplayer.is_server():
 		return
-	_network_sync_player_health.rpc(
+	network_controller.network_sync_player_health.rpc(
 		player.player_id,
 		player.health.current_health,
 		player.health.max_health,
 		player.health.is_dead,
 		player.last_damage_source_player_id,
 		player.respawn_generation
+	)
+
+
+func _sync_player_ammo_to_peers(player: PlayerController) -> void:
+	if player == null or not _is_networked() or not multiplayer.is_server():
+		return
+	var active_weapon: WeaponBase = player.weapon
+	if active_weapon == null:
+		return
+	network_controller.network_sync_player_ammo.rpc(
+		player.player_id,
+		player.get_active_weapon_index(),
+		active_weapon.ammo_in_mag,
+		active_weapon.reserve_ammo
 	)
 
 
@@ -1258,15 +1289,16 @@ func _apply_player_pickup(pickup_id: int, player_id: int, requesting_peer_id: in
 	if pickup.collect_for_player(player):
 		var owner_peer_id: int = _get_peer_id_for_player(player)
 		if _is_networked() and multiplayer.is_server() and owner_peer_id > 1:
-			_network_confirm_pickup_collected.rpc_id(owner_peer_id, pickup_id, player_id)
+			network_controller.network_confirm_pickup_collected.rpc_id(owner_peer_id, pickup_id, player_id)
 		_sync_player_health_to_peers(player)
+		_sync_player_ammo_to_peers(player)
 #endregion
 
 
 #region Callbacks de juego y red
 func _on_pickup_availability_changed(pickup_id: int, is_available: bool) -> void:
 	if _is_networked() and multiplayer.is_server():
-		_network_set_pickup_available.rpc(pickup_id, is_available)
+		network_controller.network_set_pickup_available.rpc(pickup_id, is_available)
 
 
 func _on_music_stereo_spawned(music_stereo: MusicStereo) -> void:
@@ -1290,7 +1322,7 @@ func _deliver_damage_feedback(attacker_player_id: int, victim_player_id: int, am
 		return
 	var attacker_peer_id: int = _get_peer_id_for_player(attacker)
 	if _is_networked() and multiplayer.is_server() and attacker_peer_id > 1:
-		_network_confirm_damage.rpc_id(attacker_peer_id, victim_player_id, amount, shot_id)
+		network_controller.network_confirm_damage.rpc_id(attacker_peer_id, victim_player_id, amount, shot_id)
 		return
 	_show_local_damage_feedback(victim_player_id, amount, shot_id)
 
@@ -1361,7 +1393,7 @@ func _register_player_kill(player: PlayerController, killer_id: int) -> void:
 func _broadcast_corpse_spawn(player: PlayerController, killer_position: Vector3) -> void:
 	if not _is_networked() or not multiplayer.is_server():
 		return
-	_network_spawn_corpse.rpc(
+	network_controller.network_spawn_corpse.rpc(
 		player.global_position,
 		player.rotation,
 		player.get_body_color(),
@@ -1371,7 +1403,7 @@ func _broadcast_corpse_spawn(player: PlayerController, killer_position: Vector3)
 
 func _on_options_respawn_requested() -> void:
 	if _is_networked() and not multiplayer.is_server():
-		_server_request_respawn.rpc_id(1)
+		network_controller.server_request_respawn.rpc_id(1)
 		return
 	_respawn_player(_player)
 
@@ -1384,14 +1416,14 @@ func _on_options_visibility_changed(is_visible: bool) -> void:
 
 func _on_music_stereo_playback_toggle_requested() -> void:
 	if _is_networked() and not multiplayer.is_server():
-		_server_request_music_stereo_toggle.rpc_id(1)
+		network_controller.server_request_music_stereo_toggle.rpc_id(1)
 		return
 	_apply_music_stereo_toggle()
 
 
 func _on_music_stereo_next_track_requested() -> void:
 	if _is_networked() and not multiplayer.is_server():
-		_server_request_music_stereo_next.rpc_id(1)
+		network_controller.server_request_music_stereo_next.rpc_id(1)
 		return
 	_apply_music_stereo_next()
 
@@ -1419,7 +1451,7 @@ func _broadcast_music_stereo_state() -> void:
 	if music_stereo == null or not _is_networked() or not multiplayer.is_server():
 		return
 
-	_network_apply_music_stereo_state.rpc(
+	network_controller.network_apply_music_stereo_state.rpc(
 		music_stereo.get_track_index(),
 		music_stereo.is_playing(),
 		music_stereo.get_playback_position()
@@ -1432,7 +1464,7 @@ func _on_score_changed(_player_id: int, _kills: int, _deaths: int) -> void:
 
 func _on_kill_feed_event(killer_name: String, victim_name: String, killer_id: int, victim_id: int) -> void:
 	if _is_networked() and multiplayer.is_server():
-		_network_kill_feed_event.rpc(killer_name, victim_name, killer_id, victim_id)
+		network_controller.network_kill_feed_event.rpc(killer_name, victim_name, killer_id, victim_id)
 
 
 func _on_match_finished(winner_id: int) -> void:
@@ -1446,7 +1478,7 @@ func _on_match_finished(winner_id: int) -> void:
 
 	_pending_match_result_winner_id = winner_id
 	if _is_networked() and multiplayer.is_server():
-		_network_match_finished.rpc(winner_id)
+		network_controller.network_match_finished.rpc(winner_id)
 
 	if not _match_end_uses_death_cinematic():
 		_queue_match_result_overlay(winner_id)
@@ -1458,7 +1490,7 @@ func _match_end_uses_death_cinematic() -> bool:
 
 func _play_death_cinematic(victim_position: Vector3, is_match_ending: bool, follow_target: Node3D = null, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
 	if _is_networked() and multiplayer.is_server():
-		_network_play_death_cinematic.rpc(victim_position, is_match_ending, killer_id, killer_position)
+		network_controller.network_play_death_cinematic.rpc(victim_position, is_match_ending, killer_id, killer_position)
 	else:
 		_run_death_cinematic(victim_position, is_match_ending, follow_target, killer_id, killer_position)
 
@@ -1574,7 +1606,7 @@ func _on_match_rematch_requested() -> void:
 	if _is_networked() and not multiplayer.is_server():
 		return
 	if _is_networked() and multiplayer.is_server():
-		_network_rematch.rpc()
+		network_controller.network_rematch.rpc()
 	else:
 		_execute_rematch()
 
@@ -1614,32 +1646,32 @@ func _execute_rematch() -> void:
 			for player in players:
 				_respawn_player_for_rematch(player, true)
 			_sync_score_snapshot_to_peers()
-			_network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
+			network_controller.network_sync_match_rules.rpc(_match_manager.get_rules_snapshot())
 	else:
 		for player in players:
 			_respawn_player_for_rematch(player, false)
 
 
 func _respawn_player_for_rematch(player: PlayerController, should_sync_network: bool) -> void:
-	if player == null:
+	if player == null or player_lifecycle == null:
 		return
 
-	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(players, Vector3.ZERO, 2.5, player)
+	var spawn_transform: Transform3D = player_lifecycle.get_spawn_transform(player)
 	if should_sync_network:
 		var peer_id: int = _get_peer_id_for_player(player)
-		_apply_network_respawn_player(
+		player_lifecycle.apply_network_respawn(
 			peer_id,
 			player.player_id,
 			spawn_transform.origin,
 			spawn_transform.basis.get_euler().y
 		)
-		_network_respawn_player.rpc(
+		network_controller.network_respawn_player.rpc(
 			peer_id,
 			player.player_id,
 			spawn_transform.origin,
 			spawn_transform.basis.get_euler().y
 		)
-		_sync_player_health_to_peers(player)
+		sync_player_health_to_peers(player)
 		return
 
 	player.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)
@@ -1679,7 +1711,7 @@ func _on_network_peer_disconnected(peer_id: int) -> void:
 	var player_id: int = int(_peer_to_player_id.get(peer_id, 0))
 	if player_id <= 0:
 		return
-	_network_remove_player.rpc(peer_id, player_id)
+	network_controller.network_remove_player.rpc(peer_id, player_id)
 	_sync_score_snapshot_to_peers()
 	_refresh_lan_discovery_host()
 	_refresh_network_hud()
@@ -1727,68 +1759,77 @@ func _get_peer_count() -> int:
 
 
 func _spawn_corpse(player: PlayerController, killer_position: Vector3) -> Node3D:
-	if player == null or player_corpse_scene == null:
+	if player_lifecycle == null:
 		return null
-	var corpse: Node = player_corpse_scene.instantiate()
-	if corpse == null:
-		return null
-	add_child(corpse)
-	corpse.global_position = player.global_position
-	corpse.rotation = player.rotation
-	var impulse_strength: float = float(corpse.get("impulse_strength")) if corpse.get("impulse_strength") != null else 8.0
-	var impulse: Vector3 = Vector3.UP * 0.65
-	if killer_position != Vector3.ZERO:
-		var direction: Vector3 = (player.global_position - killer_position).normalized()
-		impulse += direction * (impulse_strength * 0.72) + Vector3.UP * 0.85
-	if corpse.has_method("setup"):
-		corpse.call("setup", player.get_body_color(), impulse)
-	_latest_death_corpse = corpse as Node3D
-	return _latest_death_corpse
+	var corpse: Node3D = player_lifecycle.spawn_corpse(player, killer_position)
+	_latest_death_corpse = player_lifecycle.latest_death_corpse
+	return corpse
 
 
 func _respawn_player(player: PlayerController = null, avoid_position: Vector3 = Vector3.ZERO) -> void:
 	var player_to_respawn: PlayerController = player if player != null else _player
-	if player_to_respawn == null:
+	if player_to_respawn == null or player_lifecycle == null:
 		push_error("Cannot respawn because no player exists.")
 		return
 
-	if avoid_position == Vector3.ZERO and player_to_respawn.last_killer_position != Vector3.ZERO:
-		avoid_position = player_to_respawn.last_killer_position
-
-	var spawn_transform: Transform3D = _spawn_manager.get_spawn_transform(
-		players,
-		avoid_position,
-		2.5,
-		player_to_respawn
-	)
+	var spawn_transform: Transform3D = player_lifecycle.get_spawn_transform(player_to_respawn, avoid_position)
 	var peer_id: int = _get_peer_id_for_player(player_to_respawn)
 	if _is_networked() and multiplayer.is_server():
-		_apply_network_respawn_player(
+		player_lifecycle.apply_network_respawn(
 			peer_id,
 			player_to_respawn.player_id,
 			spawn_transform.origin,
 			spawn_transform.basis.get_euler().y
 		)
-		_network_respawn_player.rpc(
+		network_controller.network_respawn_player.rpc(
 			peer_id,
 			player_to_respawn.player_id,
 			spawn_transform.origin,
 			spawn_transform.basis.get_euler().y
 		)
-		_sync_player_health_to_peers(player_to_respawn)
+		sync_player_health_to_peers(player_to_respawn)
 	else:
 		player_to_respawn.respawn_at(spawn_transform.origin, spawn_transform.basis.get_euler().y)
 
 
-func _get_player_by_peer_id(peer_id: int) -> PlayerController:
+func get_player_by_peer_id(peer_id: int) -> PlayerController:
 	return get_node_or_null(_get_player_node_name(peer_id)) as PlayerController
 
 
-func _get_player_by_player_id(player_id: int) -> PlayerController:
+func _get_player_by_peer_id(peer_id: int) -> PlayerController:
+	return get_player_by_peer_id(peer_id)
+
+
+func get_player_by_player_id(player_id: int) -> PlayerController:
 	var peer_id: int = int(_player_id_to_peer.get(player_id, 0))
 	if peer_id <= 0:
 		return null
-	return _get_player_by_peer_id(peer_id)
+	return get_player_by_peer_id(peer_id)
+
+
+func _get_player_by_player_id(player_id: int) -> PlayerController:
+	return get_player_by_player_id(player_id)
+
+
+func register_network_player_mapping(peer_id: int, player_id: int) -> void:
+	_peer_to_player_id[peer_id] = player_id
+	_player_id_to_peer[player_id] = peer_id
+
+
+func get_peer_id_for_player(player: PlayerController) -> int:
+	return _get_peer_id_for_player(player)
+
+
+func is_networked() -> bool:
+	return _is_networked()
+
+
+func sync_player_health_to_peers(player: PlayerController) -> void:
+	_sync_player_health_to_peers(player)
+
+
+func spawn_or_update_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> PlayerController:
+	return _spawn_or_update_player(peer_id, player_id, spawn_position, yaw_radians)
 
 
 func _get_pickup_by_id(pickup_id: int) -> PickupBase:
@@ -1821,44 +1862,25 @@ func _is_local_peer(peer_id: int) -> bool:
 	return peer_id == multiplayer.get_unique_id()
 
 
-func _apply_network_respawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> PlayerController:
-	_peer_to_player_id[peer_id] = player_id
-	_player_id_to_peer[player_id] = peer_id
-	_match_manager.ensure_player(player_id)
-
-	var player: PlayerController = _get_player_by_peer_id(peer_id)
-	if player == null:
-		return _spawn_or_update_player(peer_id, player_id, spawn_position, yaw_radians)
-
-	player.player_id = player_id
-	player.respawn_at(spawn_position, yaw_radians)
-	if player.has_method("restore_match_control"):
-		player.restore_match_control()
-	return player
 #endregion
 
 
-#region RPCs
-@rpc("authority", "call_local", "reliable")
-func _network_load_map(map_id: String) -> void:
+#region Network handlers (invoked by NetworkGameController)
+func handle_network_load_map(map_id: String) -> void:
 	_activate_map(map_id, true)
 
 
-@rpc("authority", "call_local", "reliable")
-func _network_spawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
-	_peer_to_player_id[peer_id] = player_id
-	_player_id_to_peer[player_id] = peer_id
+func handle_network_spawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
+	register_network_player_mapping(peer_id, player_id)
 	_match_manager.ensure_player(player_id)
 	_spawn_or_update_player(peer_id, player_id, spawn_position, yaw_radians)
 
 
-@rpc("authority", "reliable")
-func _network_respawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
-	_apply_network_respawn_player(peer_id, player_id, spawn_position, yaw_radians)
+func handle_network_respawn_player(peer_id: int, player_id: int, spawn_position: Vector3, yaw_radians: float) -> void:
+	player_lifecycle.apply_network_respawn(peer_id, player_id, spawn_position, yaw_radians)
 
 
-@rpc("authority", "call_local", "reliable")
-func _network_remove_player(peer_id: int, player_id: int) -> void:
+func handle_network_remove_player(peer_id: int, player_id: int) -> void:
 	var player: PlayerController = _get_player_by_peer_id(peer_id)
 	if player != null:
 		players.erase(player)
@@ -1870,8 +1892,7 @@ func _network_remove_player(peer_id: int, player_id: int) -> void:
 	_player_id_to_peer.erase(player_id)
 
 
-@rpc("authority", "unreliable_ordered")
-func _network_receive_player_state(
+func handle_network_receive_player_state(
 	peer_id: int,
 	_player_id: int,
 	position: Vector3,
@@ -1893,8 +1914,7 @@ func _network_receive_player_state(
 	player.apply_network_combat_state(active_weapon_index, is_aiming_state)
 
 
-@rpc("authority", "reliable")
-func _network_sync_player_health(
+func handle_network_sync_player_health(
 	player_id: int,
 	current_health: int,
 	max_health: int,
@@ -1914,34 +1934,41 @@ func _network_sync_player_health(
 	)
 
 
-@rpc("authority", "reliable")
-func _network_sync_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
+func handle_network_sync_player_ammo(
+	player_id: int,
+	active_weapon_index: int,
+	ammo_in_mag: int,
+	reserve_ammo: int
+) -> void:
+	var player: PlayerController = _get_player_by_player_id(player_id)
+	if player == null:
+		return
+	player.apply_network_ammo(active_weapon_index, ammo_in_mag, reserve_ammo)
+
+
+func handle_network_sync_score_snapshot(snapshot: Dictionary, is_match_running: bool) -> void:
 	_match_manager.apply_score_snapshot(snapshot, is_match_running)
 
 
-@rpc("authority", "call_local", "reliable")
-func _network_apply_time_of_day_preset(time_of_day_preset: int) -> void:
+func handle_network_apply_time_of_day_preset(time_of_day_preset: int) -> void:
 	_apply_time_of_day_preset(time_of_day_preset, true)
 
 
-@rpc("authority", "reliable")
-func _network_apply_music_stereo_state(track_index: int, should_play: bool, playback_position: float) -> void:
+func handle_network_apply_music_stereo_state(track_index: int, should_play: bool, playback_position: float) -> void:
 	var music_stereo: MusicStereo = _get_music_stereo()
 	if music_stereo == null:
 		return
 	music_stereo.apply_remote_state(track_index, should_play, playback_position)
 
 
-@rpc("authority", "reliable")
-func _network_set_pickup_available(pickup_id: int, is_available: bool) -> void:
+func handle_network_set_pickup_available(pickup_id: int, is_available: bool) -> void:
 	var pickup: PickupBase = _get_pickup_by_id(pickup_id)
 	if pickup == null:
 		return
 	pickup.set_network_available(is_available)
 
 
-@rpc("authority", "reliable")
-func _network_confirm_pickup_collected(pickup_id: int, player_id: int) -> void:
+func handle_network_confirm_pickup_collected(pickup_id: int, player_id: int) -> void:
 	var player: PlayerController = _get_player_by_player_id(player_id)
 	if player == null or not _is_local_peer(_get_peer_id_for_player(player)):
 		return
@@ -1952,24 +1979,20 @@ func _network_confirm_pickup_collected(pickup_id: int, player_id: int) -> void:
 	pickup.apply_confirmed_network_collect(player)
 
 
-@rpc("authority", "reliable")
-func _network_match_finished(winner_id: int) -> void:
+func handle_network_match_finished(winner_id: int) -> void:
 	_pending_match_result_winner_id = winner_id
 	_match_manager.apply_match_finished(winner_id)
 
 
-@rpc("authority", "call_local", "reliable")
-func _network_play_death_cinematic(victim_position: Vector3, is_match_ending: bool, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
+func handle_network_play_death_cinematic(victim_position: Vector3, is_match_ending: bool, killer_id: int = -1, killer_position: Vector3 = Vector3.ZERO) -> void:
 	_run_death_cinematic(victim_position, is_match_ending, null, killer_id, killer_position)
 
 
-@rpc("authority", "call_local", "reliable")
-func _network_rematch() -> void:
+func handle_network_rematch() -> void:
 	_execute_rematch()
 
 
-@rpc("any_peer", "reliable")
-func _network_report_display_name(player_id: int, display_name: String) -> void:
+func handle_network_report_display_name(player_id: int, display_name: String) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
@@ -1978,8 +2001,7 @@ func _network_report_display_name(player_id: int, display_name: String) -> void:
 	_apply_player_display_name(player_id, display_name)
 
 
-@rpc("authority", "reliable")
-func _network_sync_player_display_name(player_id: int, display_name: String) -> void:
+func handle_network_sync_player_display_name(player_id: int, display_name: String) -> void:
 	_apply_player_display_name(player_id, display_name, false)
 
 
@@ -1993,16 +2015,14 @@ func _apply_player_display_name(player_id: int, display_name: String, broadcast:
 	_match_manager.set_player_name(player_id, clean_name)
 	_refresh_network_hud()
 	if broadcast and _is_networked() and multiplayer.is_server():
-		_network_sync_player_display_name.rpc(player_id, clean_name)
+		network_controller.network_sync_player_display_name.rpc(player_id, clean_name)
 
 
-@rpc("authority", "unreliable")
-func _network_ping_client(sent_at_msec: int) -> void:
-	_network_pong_from_client.rpc_id(1, sent_at_msec)
+func handle_network_ping_client(sent_at_msec: int) -> void:
+	network_controller.network_pong_from_client.rpc_id(1, sent_at_msec)
 
 
-@rpc("any_peer", "unreliable")
-func _network_pong_from_client(sent_at_msec: int) -> void:
+func handle_network_pong_from_client(sent_at_msec: int) -> void:
 	if not multiplayer.is_server():
 		return
 
@@ -2011,23 +2031,20 @@ func _network_pong_from_client(sent_at_msec: int) -> void:
 	_refresh_network_hud()
 
 
-@rpc("any_peer", "unreliable")
-func _network_ping_server(sent_at_msec: int) -> void:
+func handle_network_ping_server(sent_at_msec: int) -> void:
 	if not multiplayer.is_server():
 		return
 
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
-	_network_pong_from_server.rpc_id(sender_peer_id, sent_at_msec)
+	network_controller.network_pong_from_server.rpc_id(sender_peer_id, sent_at_msec)
 
 
-@rpc("authority", "unreliable")
-func _network_pong_from_server(sent_at_msec: int) -> void:
+func handle_network_pong_from_server(sent_at_msec: int) -> void:
 	_local_ping_ms = maxi(Time.get_ticks_msec() - sent_at_msec, 0)
 	_refresh_network_hud()
 
 
-@rpc("any_peer", "unreliable_ordered")
-func _server_receive_player_state(
+func handle_server_receive_player_state(
 	player_id: int,
 	position: Vector3,
 	yaw_radians: float,
@@ -2054,8 +2071,7 @@ func _server_receive_player_state(
 	_broadcast_player_state_values(sender_peer_id, player_id, position, yaw_radians, pitch_degrees, velocity, player.health.is_dead, is_crouching_state, active_weapon_index, is_aiming_state)
 
 
-@rpc("any_peer", "reliable")
-func _server_request_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int = 0) -> void:
+func handle_server_request_damage(victim_player_id: int, amount: int, attacker_player_id: int, shot_id: int = 0) -> void:
 	if not multiplayer.is_server():
 		return
 
@@ -2067,13 +2083,11 @@ func _server_request_damage(victim_player_id: int, amount: int, attacker_player_
 	_apply_player_damage(victim_player_id, amount, attacker_player_id, shot_id)
 
 
-@rpc("authority", "reliable")
-func _network_confirm_damage(victim_player_id: int, amount: int, shot_id: int) -> void:
+func handle_network_confirm_damage(victim_player_id: int, amount: int, shot_id: int) -> void:
 	_show_local_damage_feedback(victim_player_id, amount, shot_id)
 
 
-@rpc("any_peer", "reliable")
-func _server_request_pickup(pickup_id: int, player_id: int) -> void:
+func handle_server_request_pickup(pickup_id: int, player_id: int) -> void:
 	if not multiplayer.is_server():
 		return
 
@@ -2085,8 +2099,7 @@ func _server_request_pickup(pickup_id: int, player_id: int) -> void:
 	_apply_player_pickup(pickup_id, player_id, sender_peer_id)
 
 
-@rpc("any_peer", "reliable")
-func _server_request_respawn() -> void:
+func handle_server_request_respawn() -> void:
 	if not multiplayer.is_server():
 		return
 
@@ -2097,66 +2110,66 @@ func _server_request_respawn() -> void:
 		_respawn_player(player)
 
 
-@rpc("any_peer", "reliable")
-func _server_request_music_stereo_toggle() -> void:
+func handle_server_request_void_recovery(player_id: int) -> void:
+	if not multiplayer.is_server():
+		return
+
+	var sender_peer_id: int = multiplayer.get_remote_sender_id()
+	var expected_player_id: int = int(_peer_to_player_id.get(sender_peer_id, 0))
+	if expected_player_id <= 0 or expected_player_id != player_id:
+		push_warning("Rejected void recovery request from peer %d." % sender_peer_id)
+		return
+
+	var player: PlayerController = _get_player_by_player_id(player_id)
+	if player != null:
+		_respawn_player(player)
+
+
+func handle_server_request_music_stereo_toggle() -> void:
 	if not multiplayer.is_server():
 		return
 	_apply_music_stereo_toggle()
 
 
-@rpc("any_peer", "reliable")
-func _server_request_music_stereo_next() -> void:
+func handle_server_request_music_stereo_next() -> void:
 	if not multiplayer.is_server():
 		return
 	_apply_music_stereo_next()
 
 
-@rpc("any_peer", "reliable")
-func _request_full_sync() -> void:
+func handle_request_full_sync() -> void:
 	if not multiplayer.is_server():
 		return
 
 	var sender_peer_id: int = multiplayer.get_remote_sender_id()
-	_network_load_map.rpc_id(sender_peer_id, _selected_map_id)
-	_network_apply_time_of_day_preset.rpc_id(sender_peer_id, _selected_time_of_day_preset)
+	network_controller.network_load_map.rpc_id(sender_peer_id, _selected_map_id)
+	network_controller.network_apply_time_of_day_preset.rpc_id(sender_peer_id, _selected_time_of_day_preset)
 	_sync_all_players_to_peer(sender_peer_id)
 	_sync_pickups_to_peer(sender_peer_id)
 	_sync_music_stereo_to_peer(sender_peer_id)
 	_sync_player_names_to_peer(sender_peer_id)
-	_network_sync_score_snapshot.rpc_id(sender_peer_id, _match_manager.get_score_snapshot(), _match_manager.match_running)
-	_network_sync_match_rules.rpc_id(sender_peer_id, _match_manager.get_rules_snapshot())
+	network_controller.network_sync_score_snapshot.rpc_id(sender_peer_id, _match_manager.get_score_snapshot(), _match_manager.match_running)
+	network_controller.network_sync_match_rules.rpc_id(sender_peer_id, _match_manager.get_rules_snapshot())
 
 
-@rpc("authority", "reliable")
-func _network_sync_match_rules(rules_snapshot: Dictionary) -> void:
+func handle_network_sync_match_rules(rules_snapshot: Dictionary) -> void:
 	_match_manager.apply_rules_snapshot(rules_snapshot)
 
 
-@rpc("authority", "reliable")
-func _network_kill_feed_event(killer_name: String, victim_name: String, killer_id: int, victim_id: int) -> void:
+func handle_network_kill_feed_event(killer_name: String, victim_name: String, killer_id: int, victim_id: int) -> void:
 	for hud in _huds:
 		if hud != null:
 			hud.add_kill_feed_entry(killer_name, victim_name, killer_id)
 
 
-@rpc("authority", "reliable")
-func _network_spawn_corpse(
+func handle_network_spawn_corpse(
 	spawn_position: Vector3,
 	spawn_rotation: Vector3,
 	body_color: Color,
 	impulse_direction: Vector3
 ) -> void:
-	if player_corpse_scene == null:
+	if player_lifecycle == null:
 		return
-	var corpse: Node = player_corpse_scene.instantiate()
-	if corpse == null:
-		return
-	add_child(corpse)
-	corpse.global_position = spawn_position
-	corpse.rotation = spawn_rotation
-	var impulse_strength: float = float(corpse.get("impulse_strength")) if corpse.get("impulse_strength") != null else 8.0
-	var impulse: Vector3 = impulse_direction.normalized() * (impulse_strength * 0.72) + Vector3.UP * 0.85 if impulse_direction.length_squared() > 0.01 else Vector3.UP * 0.65
-	if corpse.has_method("setup"):
-		corpse.call("setup", body_color, impulse)
-	_latest_death_corpse = corpse as Node3D
+	player_lifecycle.spawn_network_corpse(spawn_position, spawn_rotation, body_color, impulse_direction)
+	_latest_death_corpse = player_lifecycle.latest_death_corpse
 #endregion

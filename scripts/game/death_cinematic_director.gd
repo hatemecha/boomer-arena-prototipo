@@ -175,6 +175,16 @@ func _choose_camera_direction(victim_position: Vector3) -> Vector3:
 		if killer_to_victim.length_squared() > 0.25:
 			return killer_to_victim.normalized()
 
+	if _arena != null:
+		var corner_transform: Transform3D = ArenaMarkersHelper.get_best_corner_transform_for_action(
+			_arena,
+			victim_position
+		)
+		var from_corner: Vector3 = victim_position - corner_transform.origin
+		from_corner.y = 0.0
+		if from_corner.length_squared() > 0.25:
+			return from_corner.normalized()
+
 	var fallback_direction: Vector3 = Vector3.BACK
 	if _local_player != null and is_instance_valid(_local_player):
 		fallback_direction = _local_player.global_transform.basis.z

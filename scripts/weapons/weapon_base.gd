@@ -39,12 +39,14 @@ var reload_anim_position: Vector3 = Vector3.ZERO
 var reload_anim_rotation: Vector3 = Vector3.ZERO
 var _next_fire_time_msec: int = 0
 var _is_reloading: bool = false
+var _reserve_ammo_cap: int = 0
 var _audio_player: AudioStreamPlayer3D
 var _reload_tween: Tween
 
 
 func _ready() -> void:
 	set_process(false)
+	_reserve_ammo_cap = reserve_ammo
 	ammo_in_mag = clampi(ammo_in_mag, 0, mag_size)
 	_audio_player = AudioStreamPlayer3D.new()
 	_audio_player.name = "WeaponAudio"
@@ -88,6 +90,9 @@ func reload() -> bool:
 	_play_sound(reload_sound)
 	await _animate_reload()
 
+	if not _is_reloading:
+		return false
+
 	var needed_ammo: int = mag_size - ammo_in_mag
 	var ammo_to_load: int = min(needed_ammo, reserve_ammo)
 	ammo_in_mag += ammo_to_load
@@ -96,6 +101,14 @@ func reload() -> bool:
 	ammo_changed.emit(ammo_in_mag, reserve_ammo)
 	_set_state("Idle")
 	return true
+
+
+func cancel_reload() -> void:
+	if not _is_reloading:
+		return
+	_reset_reload_animation()
+	_is_reloading = false
+	_set_state("Idle")
 
 
 func _animate_reload() -> void:
@@ -308,10 +321,16 @@ func add_ammo(amount: int) -> bool:
 	if amount <= 0:
 		push_warning("Ammo amount must be greater than zero.")
 		return false
+	if not can_accept_more_ammo():
+		return false
 
-	reserve_ammo += amount
+	reserve_ammo = mini(reserve_ammo + amount, _reserve_ammo_cap)
 	ammo_changed.emit(ammo_in_mag, reserve_ammo)
 	return true
+
+
+func can_accept_more_ammo() -> bool:
+	return ammo_in_mag < mag_size or reserve_ammo < _reserve_ammo_cap
 
 
 func _set_state(next_state: String) -> void:

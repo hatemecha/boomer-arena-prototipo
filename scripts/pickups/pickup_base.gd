@@ -145,14 +145,10 @@ func set_network_available(is_next_available: bool) -> void:
 	_set_available(is_next_available, false)
 
 
-func apply_confirmed_network_collect(player: PlayerController) -> bool:
-	if player == null:
-		return false
-
-	var was_applied: bool = apply_to_player(player)
+func apply_confirmed_network_collect(_player: PlayerController) -> bool:
 	_play_pickup_sound()
 	_set_available(false, false)
-	return was_applied
+	return true
 
 
 func _on_body_entered(body: Node3D) -> void:

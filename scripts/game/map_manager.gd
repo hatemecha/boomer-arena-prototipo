@@ -6,19 +6,23 @@ signal active_map_changed(map_id: String, arena: Node3D)
 const MAP_TEST_ARENA: String = "test_arena"
 const MAP_DUST2: String = "dust2"
 const MAP_BACKROOMS: String = "backrooms"
-const MAP_DOOM_E1M1: String = "doom_e1m1"
-const DEFAULT_MAP_ID: String = MAP_DOOM_E1M1
+const MAP_IRON_HANGAR: String = "iron_hangar"
+const LEGACY_MAP_DOOM_E1M1: String = "doom_e1m1"
+const DEFAULT_MAP_ID: String = MAP_IRON_HANGAR
 const MAP_SCENE_PATHS: Dictionary = {
-	MAP_DOOM_E1M1: "res://scenes/maps/IronHangarArena.tscn",
+	MAP_IRON_HANGAR: "res://scenes/maps/IronHangarArena.tscn",
 	MAP_TEST_ARENA: "res://scenes/maps/TestArena.tscn",
 	MAP_DUST2: "res://scenes/maps/Dust2Arena.tscn",
 	MAP_BACKROOMS: "res://scenes/maps/BackroomsArena.tscn",
 }
 const MAP_LABELS: Dictionary = {
-	MAP_DOOM_E1M1: "IRON HANGAR",
+	MAP_IRON_HANGAR: "IRON HANGAR",
 	MAP_TEST_ARENA: "TEST ARENA",
 	MAP_DUST2: "DE_DUST2",
 	MAP_BACKROOMS: "BACKROOMS",
+}
+const LEGACY_MAP_ALIASES: Dictionary = {
+	LEGACY_MAP_DOOM_E1M1: MAP_IRON_HANGAR,
 }
 
 var selected_map_id: String = DEFAULT_MAP_ID
@@ -71,7 +75,7 @@ func get_active_arena() -> Node3D:
 
 func get_map_options() -> Array[Dictionary]:
 	return [
-		{"id": MAP_DOOM_E1M1, "label": str(MAP_LABELS[MAP_DOOM_E1M1])},
+		{"id": MAP_IRON_HANGAR, "label": str(MAP_LABELS[MAP_IRON_HANGAR])},
 		{"id": MAP_DUST2, "label": str(MAP_LABELS[MAP_DUST2])},
 		{"id": MAP_BACKROOMS, "label": str(MAP_LABELS[MAP_BACKROOMS])},
 		{"id": MAP_TEST_ARENA, "label": str(MAP_LABELS[MAP_TEST_ARENA])},
@@ -80,6 +84,8 @@ func get_map_options() -> Array[Dictionary]:
 
 func sanitize_map_id(map_id: String) -> String:
 	var clean_id: String = map_id.strip_edges().to_lower()
+	if LEGACY_MAP_ALIASES.has(clean_id):
+		clean_id = str(LEGACY_MAP_ALIASES[clean_id])
 	if MAP_SCENE_PATHS.has(clean_id):
 		return clean_id
 	return DEFAULT_MAP_ID
